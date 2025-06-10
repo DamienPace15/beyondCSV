@@ -5,9 +5,9 @@
 
 declare module "sst" {
   export interface Resource {
-    "csvUpload": {
-      "name": string
-      "type": "sst.aws.Bucket"
+    "MyWeb": {
+      "type": "sst.aws.SvelteKit"
+      "url": string
     }
     "dynamo": {
       "name": string
