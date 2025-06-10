@@ -21,8 +21,11 @@ export default $config({
 		const coreApi = await import('./infrastructure/api.ts');
 
 		new sst.aws.SvelteKit('easyCSVFe', {
-			link: [coreApi],
-			environment: { PRIVATE_CORE_API_URL: coreApi.apiGateway.url }
+			link: [coreApi, storage.s3Bucket],
+			environment: {
+				PRIVATE_CORE_API_URL: coreApi.apiGateway.url,
+				PRIVATE_S3_BUCKET_NAME: storage.s3Bucket.name
+			}
 		});
 	}
 });
