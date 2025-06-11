@@ -302,10 +302,11 @@
 	}
 </script>
 
-<h1>S3 CSV Upload</h1>
-<p class="subtitle">Upload your CSV files with instant header preview and column type selection</p>
-
 <div class="page-container">
+	<h1>S3 CSV Upload</h1>
+	<p class="subtitle">
+		Upload your CSV files with instant header preview and column type selection
+	</p>
 	<div class="main-content">
 		<div class="upload-container">
 			<div class="form-group">
