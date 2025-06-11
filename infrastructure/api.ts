@@ -1,3 +1,5 @@
+import { s3Bucket } from './storage';
+
 export const apiGateway = new sst.aws.ApiGatewayV2('easyCSV', {
 	accessLog: { retention: '1 week' },
 	transform: {
@@ -16,14 +18,23 @@ export const apiGateway = new sst.aws.ApiGatewayV2('easyCSV', {
 	}
 });
 
-apiGateway.route('GET /content/{userId}', {
-	handler: './.get_headers',
+apiGateway.route('POST /parquet-creation', {
+	handler: './.parquet-creation',
 	runtime: 'rust',
 	memory: '128 MB',
-	logging: { logGroup: `${$app.stage}-get-csv-headers` },
+	timeout: '500 seconds',
+	logging: { logGroup: `${$app.stage}-create-parquet` },
+	environment: { S3_UPLOAD_BUCKET_NAME: s3Bucket.name },
+	permissions: [
+		{
+			actions: ['s3:GetObject', 's3:Putobject'],
+			effect: 'allow',
+			resources: [s3Bucket.arn, s3Bucket.arn.apply((arn) => `${arn}/*`)]
+		}
+	],
 	transform: {
 		function: {
-			name: `${$app.stage}-get-csv-headers`
+			name: `${$app.stage}-create-parquet`
 		}
 	}
 });
