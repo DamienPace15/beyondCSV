@@ -10,6 +10,7 @@
 	let error = $state('');
 	let csvHeaders = $state<string[]>([]);
 	let columnTypes = $state<{ [key: string]: string }>({});
+	let excludedColumns = $state<Set<string>>(new Set());
 	let isReadingHeaders = $state(false);
 	let headerError = $state('');
 
@@ -107,6 +108,7 @@
 			types[header] = 'string'; // Default to string type
 		});
 		columnTypes = types;
+		excludedColumns = new Set(); // Reset excluded columns when new headers are loaded
 	}
 
 	function updateColumnType(header: string, type: string) {
@@ -116,22 +118,61 @@
 	function setAllColumnsType(type: string) {
 		const newTypes: { [key: string]: string } = {};
 		csvHeaders.forEach((header) => {
-			newTypes[header] = type;
+			if (!excludedColumns.has(header)) {
+				newTypes[header] = type;
+			}
+		});
+		columnTypes = { ...columnTypes, ...newTypes };
+	}
+
+	function toggleColumnExclusion(header: string) {
+		const newExcluded = new Set(excludedColumns);
+		if (newExcluded.has(header)) {
+			newExcluded.delete(header);
+			// When re-including a column, set it to default string type if it doesn't have a type
+			if (!columnTypes[header]) {
+				columnTypes = { ...columnTypes, [header]: 'string' };
+			}
+		} else {
+			newExcluded.add(header);
+		}
+		excludedColumns = newExcluded;
+	}
+
+	function includeAllColumns() {
+		excludedColumns = new Set();
+		// Ensure all headers have a type
+		const newTypes = { ...columnTypes };
+		csvHeaders.forEach((header) => {
+			if (!newTypes[header]) {
+				newTypes[header] = 'string';
+			}
 		});
 		columnTypes = newTypes;
 	}
 
+	function excludeAllColumns() {
+		excludedColumns = new Set(csvHeaders);
+	}
+
+	function getIncludedHeaders(): string[] {
+		return csvHeaders.filter((header) => !excludedColumns.has(header));
+	}
+
 	function getColumnTypeSchema() {
-		return Object.entries(columnTypes).map(([column, type]) => ({
-			column,
-			type
-		}));
+		return csvHeaders
+			.filter((header) => !excludedColumns.has(header))
+			.map((header) => ({
+				column: header,
+				type: columnTypes[header]
+			}));
 	}
 
 	async function handleFileChange() {
 		// Reset states
 		csvHeaders = [];
 		columnTypes = {};
+		excludedColumns = new Set();
 		headerError = '';
 		error = '';
 		uploadStatus = '';
@@ -195,6 +236,12 @@
 			return;
 		}
 
+		const includedHeaders = getIncludedHeaders();
+		if (includedHeaders.length === 0) {
+			error = 'Please include at least one column for upload';
+			return;
+		}
+
 		const file = files[0];
 
 		// Validate CSV file
@@ -214,21 +261,23 @@
 		error = '';
 
 		try {
-			// Get the column type schema
+			// Get the column type schema (only for included columns)
 			const typeSchema = getColumnTypeSchema();
 			console.log('Column Type Schema:', typeSchema);
+			console.log('Excluded Columns:', Array.from(excludedColumns));
 
 			// TODO: Send typeSchema along with S3 key to your lambda
 			// const lambdaPayload = {
 			//   s3Key: key,
-			//   columnTypes: typeSchema
+			//   columnTypes: typeSchema,
+			//   excludedColumns: Array.from(excludedColumns)
 			// };
 
 			// Upload directly to S3 using the presigned URL from environment
 			uploadStatus = `Uploading ${file.name} to S3...`;
 			await uploadToS3(presignedUrl, file);
 
-			uploadStatus = `Upload successful!`;
+			uploadStatus = `Upload successful! Processing ${includedHeaders.length} columns.`;
 			uploadProgress = 100;
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Upload failed';
@@ -245,6 +294,7 @@
 		error = '';
 		csvHeaders = [];
 		columnTypes = {};
+		excludedColumns = new Set();
 		headerError = '';
 		// Reset file input
 		const fileInput = document.getElementById('file-input') as HTMLInputElement;
@@ -285,15 +335,41 @@
 			{#if csvHeaders.length > 0}
 				<div class="headers-section">
 					<div class="headers-title">
-						<h3>CSV Headers & Column Types ({csvHeaders.length} columns)</h3>
+						<h3>
+							CSV Headers & Column Types
+							<span class="column-count">
+								({getIncludedHeaders().length}/{csvHeaders.length} columns included)
+							</span>
+						</h3>
 						<div class="bulk-actions">
-							<label>Set all columns to:</label>
-							<select onchange={(e) => setAllColumnsType(e.target.value)}>
-								<option value="">Select type...</option>
-								{#each dataTypes as type}
-									<option value={type.value}>{type.label}</option>
-								{/each}
-							</select>
+							<div class="bulk-action-group">
+								<label>Columns:</label>
+								<button
+									type="button"
+									class="bulk-btn include-all"
+									onclick={includeAllColumns}
+									disabled={excludedColumns.size === 0}
+								>
+									Include All
+								</button>
+								<button
+									type="button"
+									class="bulk-btn exclude-all"
+									onclick={excludeAllColumns}
+									disabled={excludedColumns.size === csvHeaders.length}
+								>
+									Exclude All
+								</button>
+							</div>
+							<div class="bulk-action-group">
+								<label>Set included to:</label>
+								<select onchange={(e) => setAllColumnsType(e.target.value)}>
+									<option value="">Select type...</option>
+									{#each dataTypes as type}
+										<option value={type.value}>{type.label}</option>
+									{/each}
+								</select>
+							</div>
 						</div>
 					</div>
 
@@ -391,15 +467,31 @@
 
 					<div class="column-types-grid">
 						{#each csvHeaders as header, index}
-							<div class="column-type-item">
+							{@const isExcluded = excludedColumns.has(header)}
+							<div class="column-type-item" class:excluded={isExcluded}>
+								<div class="column-controls">
+									<button
+										type="button"
+										class="toggle-column-btn"
+										class:include={isExcluded}
+										class:exclude={!isExcluded}
+										onclick={() => toggleColumnExclusion(header)}
+										title={isExcluded ? 'Include this column' : 'Exclude this column'}
+									>
+										{isExcluded ? '✓' : '✕'}
+									</button>
+								</div>
 								<div class="column-info">
 									<span class="column-index">Col {index + 1}:</span>
-									<span class="column-name">{header || '(empty)'}</span>
+									<span class="column-name" class:excluded-text={isExcluded}>
+										{header || '(empty)'}
+									</span>
 								</div>
 								<div class="type-selector">
 									<select
 										bind:value={columnTypes[header]}
 										onchange={(e) => updateColumnType(header, e.target.value)}
+										disabled={isExcluded}
 									>
 										{#each dataTypes as type}
 											<option value={type.value}>{type.label}</option>
@@ -409,6 +501,13 @@
 							</div>
 						{/each}
 					</div>
+
+					{#if excludedColumns.size > 0}
+						<div class="excluded-summary">
+							<strong>Excluded columns ({excludedColumns.size}):</strong>
+							{Array.from(excludedColumns).join(', ')}
+						</div>
+					{/if}
 
 					<details class="type-schema">
 						<summary>Column Type Schema (for Lambda)</summary>
@@ -425,8 +524,11 @@
 			{/if}
 
 			<div class="button-group">
-				<button onclick={handleUpload} disabled={uploading || !files || csvHeaders.length === 0}>
-					{uploading ? 'Uploading...' : 'Upload to S3'}
+				<button
+					onclick={handleUpload}
+					disabled={uploading || !files || getIncludedHeaders().length === 0}
+				>
+					{uploading ? 'Uploading...' : `Upload ${getIncludedHeaders().length} columns to S3`}
 				</button>
 
 				{#if uploadStatus || error || csvHeaders.length > 0}
@@ -586,7 +688,7 @@
 	.headers-title {
 		display: flex;
 		justify-content: space-between;
-		align-items: center;
+		align-items: flex-start;
 		margin-bottom: 1.5rem;
 		flex-wrap: wrap;
 		gap: 1rem;
@@ -598,18 +700,31 @@
 		font-size: 1.25rem;
 		font-weight: 700;
 		display: flex;
-		align-items: center;
-		gap: 0.5rem;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.column-count {
+		font-size: 0.9rem;
+		color: #666;
+		font-weight: 400;
 	}
 
 	.bulk-actions {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		align-items: flex-end;
+	}
+
+	.bulk-action-group {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 		font-size: 0.9rem;
 	}
 
-	.bulk-actions label {
+	.bulk-action-group label {
 		white-space: nowrap;
 		color: #0f1419;
 		font-weight: 600;
@@ -617,7 +732,45 @@
 		margin-bottom: 0;
 	}
 
-	.bulk-actions select {
+	.bulk-btn {
+		padding: 0.4rem 0.8rem;
+		border: 1px solid;
+		border-radius: 4px;
+		font-size: 0.8rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		font-family: inherit;
+	}
+
+	.bulk-btn.include-all {
+		background: #d4edda;
+		color: #155724;
+		border-color: #c3e6cb;
+	}
+
+	.bulk-btn.include-all:hover:not(:disabled) {
+		background: #c3e6cb;
+		border-color: #b3d9cc;
+	}
+
+	.bulk-btn.exclude-all {
+		background: #f8d7da;
+		color: #721c24;
+		border-color: #f5c6cb;
+	}
+
+	.bulk-btn.exclude-all:hover:not(:disabled) {
+		background: #f5c6cb;
+		border-color: #f1b0b7;
+	}
+
+	.bulk-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.bulk-action-group select {
 		padding: 0.5rem 0.75rem;
 		border: 1px solid #d5dbdb;
 		border-radius: 4px;
@@ -628,7 +781,7 @@
 		transition: all 0.2s ease;
 	}
 
-	.bulk-actions select:focus {
+	.bulk-action-group select:focus {
 		outline: none;
 		border-color: #ff9900;
 		box-shadow: 0 0 0 2px rgba(255, 153, 0, 0.2);
@@ -655,6 +808,57 @@
 	.column-type-item:hover {
 		border-color: #146eb4;
 		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	}
+
+	.column-type-item.excluded {
+		background: #f8f9fa;
+		border-color: #dee2e6;
+		opacity: 0.7;
+	}
+
+	.column-type-item.excluded:hover {
+		border-color: #adb5bd;
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	}
+
+	.column-controls {
+		display: flex;
+		align-items: center;
+	}
+
+	.toggle-column-btn {
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+		border: 2px solid;
+		background: white;
+		cursor: pointer;
+		font-weight: bold;
+		font-size: 0.9rem;
+		transition: all 0.2s ease;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.toggle-column-btn.include {
+		color: #28a745;
+		border-color: #28a745;
+	}
+
+	.toggle-column-btn.include:hover {
+		background: #28a745;
+		color: white;
+	}
+
+	.toggle-column-btn.exclude {
+		color: #dc3545;
+		border-color: #dc3545;
+	}
+
+	.toggle-column-btn.exclude:hover {
+		background: #dc3545;
+		color: white;
 	}
 
 	.column-info {
@@ -690,6 +894,12 @@
 		min-width: 0;
 	}
 
+	.column-name.excluded-text {
+		text-decoration: line-through;
+		color: #6c757d;
+		background: #e9ecef;
+	}
+
 	.type-selector select {
 		padding: 0.5rem 0.75rem;
 		border: 1px solid #d5dbdb;
@@ -706,6 +916,22 @@
 		outline: none;
 		border-color: #ff9900;
 		box-shadow: 0 0 0 2px rgba(255, 153, 0, 0.2);
+	}
+
+	.type-selector select:disabled {
+		background: #f8f9fa;
+		color: #6c757d;
+		cursor: not-allowed;
+	}
+
+	.excluded-summary {
+		background: #fff3cd;
+		border: 1px solid #ffeaa7;
+		border-radius: 4px;
+		padding: 1rem;
+		margin-bottom: 1rem;
+		font-size: 0.9rem;
+		color: #856404;
 	}
 
 	.data-types-guide {
@@ -867,6 +1093,10 @@
 
 	.decision-tip strong {
 		color: #146eb4;
+	}
+
+	.type-schema {
+		margin-top: 1rem;
 	}
 
 	.type-schema summary {
@@ -1074,7 +1304,21 @@
 			align-items: stretch;
 		}
 
+		.bulk-actions {
+			align-items: stretch;
+		}
+
+		.bulk-action-group {
+			justify-content: space-between;
+		}
+
 		.column-type-item {
+			flex-direction: column;
+			align-items: stretch;
+			gap: 0.75rem;
+		}
+
+		.column-info {
 			flex-direction: column;
 			align-items: stretch;
 			gap: 0.5rem;
@@ -1083,6 +1327,10 @@
 		.type-selector select {
 			min-width: auto;
 			width: 100%;
+		}
+
+		.toggle-column-btn {
+			align-self: flex-start;
 		}
 	}
 </style>
