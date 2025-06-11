@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { LayoutData } from './$types';
+	import { parseCsvToParquet } from './sendDataToLambda';
 
 	let { data }: { data: LayoutData } = $props();
 
@@ -279,6 +280,8 @@
 
 			uploadStatus = `Upload successful! Processing ${includedHeaders.length} columns.`;
 			uploadProgress = 100;
+
+			const response = await parseCsvToParquet(data.env.CORE_API_URL, typeSchema, key);
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Upload failed';
 			uploadStatus = '';
