@@ -15,3 +15,15 @@ export const apiGateway = new sst.aws.ApiGatewayV2('easyCSV', {
 		}
 	}
 });
+
+apiGateway.route('GET /content/{userId}', {
+	handler: './.get_headers',
+	runtime: 'rust',
+	memory: '128 MB',
+	logging: { logGroup: `${$app.stage}-get-csv-headers` },
+	transform: {
+		function: {
+			name: `${$app.stage}-get-csv-headers`
+		}
+	}
+});
