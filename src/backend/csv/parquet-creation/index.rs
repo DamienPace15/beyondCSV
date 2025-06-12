@@ -5,8 +5,10 @@ use aws_lambda_events::{
 };
 use aws_sdk_s3::Client as S3Client;
 use lambda_runtime::{Error, LambdaEvent, service_fn};
+use serde_json::json;
 use std::env;
 use tracing::{error, info};
+use uuid::Uuid;
 
 use arrow::array::{
     ArrayRef, BooleanArray, Date32Array, Float64Array, Int64Array, StringArray,
@@ -80,7 +82,7 @@ type DynamicRow = HashMap<String, Option<String>>;
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
+        .with_max_level(tracing::Level::WARN)
         .with_target(false)
         .without_time()
         .init();
@@ -117,23 +119,22 @@ async fn handler(
         start_time.elapsed().as_secs_f64()
     );
 
-    upload_to_s3(&bucket_name, "parquet/random.parquet", parquet_data).await?;
+    let parquet_key = format!("parquet/{}.parquet", Uuid::new_v4());
 
-    // Here you would typically upload the parquet_data back to S3
-    // upload_parquet_to_s3(&bucket_name, &parquet_key, parquet_data).await?;
+    upload_to_s3(&bucket_name, &parquet_key, parquet_data).await?;
 
     let mut headers = HeaderMap::new();
     headers.insert("Content-Type", "application/json".parse().unwrap());
+
+    let response_body = json!({
+        "parquet_key": parquet_key
+    });
 
     Ok(ApiGatewayV2httpResponse {
         status_code: 200,
         headers,
         multi_value_headers: HeaderMap::new(),
-        body: Some(Body::Text(format!(
-            "{{\"message\": \"Successfully converted {} rows to Parquet\", \"processing_time\": {:.2}}}",
-            rows.len(),
-            start_time.elapsed().as_secs_f64()
-        ))),
+        body: Some(Body::Text(json!(response_body).to_string())),
         is_base64_encoded: false,
         cookies: vec![],
     })

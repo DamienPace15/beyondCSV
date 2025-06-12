@@ -2,7 +2,7 @@ export async function parseCsvToParquet(
 	CORE_API_URL: string,
 	payload: { column: string; type: string }[],
 	s3Key: string
-): Promise<{ statusCode: number }> {
+): Promise<{ statusCode: number; parquet_key: string }> {
 	const response = await fetch(`${CORE_API_URL}/parquet-creation`, {
 		method: 'POST',
 		headers: {
@@ -11,5 +11,13 @@ export async function parseCsvToParquet(
 		body: JSON.stringify({ payload, s3Key })
 	});
 
-	return { statusCode: response.status };
+	if (response.status !== 200) {
+		throw new Error('wrong');
+	}
+
+	const body = await response.json();
+
+	const parquet_key = body.parquet_key;
+
+	return { statusCode: response.status, parquet_key };
 }

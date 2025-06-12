@@ -25,6 +25,9 @@ tracing-subscriber = "0.3"
 rust_decimal = { version = "1.35", features = ["tokio-pg", "serde-with-float"] }
 uuid = { version = "1.16.0", features = ["v4", "serde"] }
 sst_sdk = "0.1.0"
+polars = { version = "0.46", features = ["lazy", "parquet", "serde", "sql"] }
+polars-sql = "0.46"
+
 
 [profile.release]
 lto = true
@@ -34,3 +37,8 @@ panic = "abort"
 [[bin]]
 name = "parquet-creation"
 path = "src/backend/csv/parquet-creation/index.rs"
+
+[[bin]]
+name = "generate-parquet-query"
+path = "src/backend/parquet/generate-query/index.rs"
+

@@ -38,3 +38,24 @@ apiGateway.route('POST /parquet-creation', {
 		}
 	}
 });
+
+apiGateway.route('POST /generate-parquet-query', {
+	handler: './.generate-parquet-query',
+	runtime: 'rust',
+	memory: '128 MB',
+	timeout: '500 seconds',
+	logging: { logGroup: `${$app.stage}-generate-parquet-query` },
+	environment: { S3_UPLOAD_BUCKET_NAME: s3Bucket.name },
+	permissions: [
+		{
+			actions: ['s3:GetObject'],
+			effect: 'allow',
+			resources: [s3Bucket.arn, s3Bucket.arn.apply((arn) => `${arn}/*`)]
+		}
+	],
+	transform: {
+		function: {
+			name: `${$app.stage}-generate-parquet-query`
+		}
+	}
+});
