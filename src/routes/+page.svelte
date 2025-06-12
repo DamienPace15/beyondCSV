@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { LayoutData } from './$types';
 	import { parseCsvToParquet } from './sendDataToLambda';
+	import { goto } from '$app/navigation';
 
 	let { data }: { data: LayoutData } = $props();
 
@@ -17,7 +18,6 @@
 
 	const presignedUrl = data.env.PRESIGNED_URL;
 	const key = data.env.KEY;
-	console.log(key);
 
 	// Available data types for columns
 	const dataTypes = [
@@ -267,13 +267,6 @@
 			console.log('Column Type Schema:', typeSchema);
 			console.log('Excluded Columns:', Array.from(excludedColumns));
 
-			// TODO: Send typeSchema along with S3 key to your lambda
-			// const lambdaPayload = {
-			//   s3Key: key,
-			//   columnTypes: typeSchema,
-			//   excludedColumns: Array.from(excludedColumns)
-			// };
-
 			// Upload directly to S3 using the presigned URL from environment
 			uploadStatus = `Uploading ${file.name} to S3...`;
 			await uploadToS3(presignedUrl, file);
@@ -282,6 +275,15 @@
 			uploadProgress = 100;
 
 			const response = await parseCsvToParquet(data.env.CORE_API_URL, typeSchema, key);
+
+			console.log(response);
+
+			if (response.statusCode !== 200) {
+				console.log('failed');
+			} else {
+				console.log(response.parquet_key);
+				await goto(`/chat?key=${response.parquet_key}`);
+			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Upload failed';
 			uploadStatus = '';
