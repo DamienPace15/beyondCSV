@@ -1,2 +1,2 @@
 # beyondCSV
-CSV to parquet, with natural language processing
+CSV to parquet, with natural language querying
