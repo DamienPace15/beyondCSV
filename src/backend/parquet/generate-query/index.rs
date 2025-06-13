@@ -1,7 +1,13 @@
+use aws_config::BehaviorVersion;
 use aws_lambda_events::{
     apigw::{ApiGatewayV2httpRequest, ApiGatewayV2httpResponse},
     encodings::Body,
     http::HeaderMap,
+};
+use aws_sdk_bedrockruntime::{
+    Client as BedrockClient,
+    operation::converse::{ConverseError, ConverseOutput},
+    types::{ContentBlock, ConversationRole, Message, SystemContentBlock},
 };
 use aws_sdk_s3::Client as S3Client;
 use lambda_runtime::{Error, LambdaEvent, service_fn};
@@ -68,8 +74,117 @@ async fn handler(
         .join("\n");
     println!("Schema:\n{}", schema_string);
 
+    let sdk_config = aws_config::defaults(BehaviorVersion::latest())
+        .region("ap-southeast-2")
+        .load()
+        .await;
+
+    let bedrock_client = BedrockClient::new(&sdk_config);
+
+    const USER_MESSAGE: &str = r#" You are going to be given a schema for a parquet file and a query from a user related to querying that schema.
+    You will need to make an SQL query from that schema and only return the SQL query and nothing else. No reasoning as to why. Just an SQL query.
+    I will be using that SQL in a polars sql query in rust.
+
+    example schema would be
+     Schema:
+        Name: String
+        Country: String
+        Play: String
+
+    The message might contain some details about things not related to the schema, only extract things from the message related to the schema.
+
+    for example a dataset may be about cars, but if someone says select all red cars and tell me how hot the day is, only extract stuff related to the car. If you can't find a schema match, don't put it in.
+
+    the user message might be like I want to know the name of all basketball players from Australia. Don't include any \n.
+
+    understand that the polars is reading from a parquet file that is saved in memory of a lambda so there will be no table to select from
+
+    Return an SQL statment like this nothing else. No extra special characters, make sure it's all on one line
+
+    The table name must always be data, nothing else.
+
+    SELECT * FROM data WHERE Country = 'Australia' AND Play = 'Basketball';
+    "#;
+
+    let bedrock_response = bedrock_client
+        .converse()
+        .model_id("apac.amazon.nova-pro-v1:0")
+        .system(SystemContentBlock::Text(USER_MESSAGE.to_string()))
+        .messages(
+            Message::builder()
+                .role(ConversationRole::User)
+                .content(ContentBlock::Text(format!(
+                    "schema: {}, question: {}",
+                    schema_string, request.message
+                )))
+                .build()
+                .unwrap(),
+        )
+        .send()
+        .await;
+
+    let output: String = match bedrock_response {
+        Ok(output) => {
+            let text = get_converse_output_text(output)?;
+            text
+        }
+        Err(_) => todo!(),
+    };
+
+    println!("{:?}", output);
+
+    let mut ctx = SQLContext::new();
+
+    // Register the LazyFrame with a table name
+    ctx.register("data", lf.clone());
+
+    // Execute the SQL query (assuming 'output' contains your SQL string)
+    let result_df = ctx.execute(&output)?.collect()?;
+
+    let json_data = serde_json::to_string_pretty(&result_df.to_string())?;
+
+    println!("{:?}", json_data);
+
+    const MAKE_HUMAN_READABLE: &str = r#"You will be given some data extraced from a parquet file, make the data nice and presentable to an end user
+    ensure that you are only returning things related to the data, I do not need a reason why you did it the way you did.
+    Only return things related to the data.
+
+    Using the user question and the information from the parquet file return a message that a user will udnerstand.
+
+    E.G if someone asks I want to know the name of the most popular state in Australia, use that message as well as the information gathered to then present a message.
+
+    respond with something that gives them an accurate reply to their message and don't output just the raw data
+    "#;
+
+    let make_human_presentable = bedrock_client
+        .converse()
+        .model_id("apac.amazon.nova-pro-v1:0")
+        .system(SystemContentBlock::Text(MAKE_HUMAN_READABLE.to_string()))
+        .messages(
+            Message::builder()
+                .role(ConversationRole::User)
+                .content(ContentBlock::Text(format!(
+                    "data that needs to be presentable: {}, user question: {}",
+                    json_data, request.message
+                )))
+                .build()
+                .unwrap(),
+        )
+        .send()
+        .await;
+
+    let readable_output: String = match make_human_presentable {
+        Ok(read_output) => {
+            let text = get_converse_output_text(read_output)?;
+            text
+        }
+        Err(_) => todo!(),
+    };
+
+    println!("{:?}", readable_output);
+
     let response_body = json!({
-        "response_message": "not working yet"
+        "response_message": readable_output
     });
 
     Ok(ApiGatewayV2httpResponse {
@@ -108,4 +223,19 @@ async fn download_parquet_to_tmp(
     fs::write(&temp_path, bytes)?;
 
     Ok(temp_path)
+}
+
+fn get_converse_output_text(output: ConverseOutput) -> Result<String, Error> {
+    let text = output
+        .output()
+        .ok_or("no output")?
+        .as_message()
+        .map_err(|_| "output not a message")?
+        .content()
+        .first()
+        .ok_or("no content in message")?
+        .as_text()
+        .map_err(|_| "content is not text")?
+        .to_string();
+    Ok(text)
 }

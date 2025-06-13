@@ -51,6 +51,11 @@ apiGateway.route('POST /generate-parquet-query', {
 			actions: ['s3:GetObject'],
 			effect: 'allow',
 			resources: [s3Bucket.arn, s3Bucket.arn.apply((arn) => `${arn}/*`)]
+		},
+		{
+			effect: 'allow',
+			actions: ['bedrock:*'],
+			resources: ['*']
 		}
 	],
 	transform: {
