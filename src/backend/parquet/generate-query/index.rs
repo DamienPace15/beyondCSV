@@ -6,22 +6,20 @@ use aws_lambda_events::{
 };
 use aws_sdk_bedrockruntime::{
     Client as BedrockClient,
-    operation::converse::{ConverseError, ConverseOutput},
+    operation::converse::ConverseOutput,
     types::{ContentBlock, ConversationRole, Message, SystemContentBlock},
 };
 use aws_sdk_s3::Client as S3Client;
 use lambda_runtime::{Error, LambdaEvent, service_fn};
 use polars::prelude::*;
 use polars_sql::SQLContext;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
-use std::collections::HashMap;
 use std::env;
 use std::fs;
 use uuid::Uuid;
 
 use std::path::PathBuf;
-use tracing::{error, info};
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -101,7 +99,7 @@ async fn handler(
 
     Return an SQL statment like this nothing else. No extra special characters, make sure it's all on one line
 
-    The table name must always be data, nothing else.
+    The table name must always be data, nothing else. Only parse one statement at a time.
 
     SELECT * FROM data WHERE Country = 'Australia' AND Play = 'Basketball';
     "#;
@@ -141,9 +139,28 @@ async fn handler(
     // Execute the SQL query (assuming 'output' contains your SQL string)
     let result_df = ctx.execute(&output)?.collect()?;
 
-    let json_data = serde_json::to_string_pretty(&result_df.to_string())?;
+    let column_names: Vec<&PlSmallStr> = result_df.get_column_names();
+    let mut rows = Vec::new();
 
-    println!("{:?}", json_data);
+    for i in 0..result_df.height() {
+        let mut row = serde_json::Map::new();
+        for (col_idx, &col_name) in column_names.iter().enumerate() {
+            let column = result_df.get_columns()[col_idx].clone();
+            let value = column.get(i).unwrap();
+            row.insert(col_name.to_string(), json!(value.to_string()));
+        }
+        rows.push(json!(row));
+    }
+
+    let structured_data = json!({
+        "metadata": {
+            "rows": result_df.height(),
+            "columns": column_names
+        },
+        "data": rows
+    });
+
+    let json_data = serde_json::to_string_pretty(&structured_data)?;
 
     const MAKE_HUMAN_READABLE: &str = r#"You will be given some data extraced from a parquet file, make the data nice and presentable to an end user
     ensure that you are only returning things related to the data, I do not need a reason why you did it the way you did.
