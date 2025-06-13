@@ -105,10 +105,7 @@
 			key
 		);
 
-		return (
-			responses.response_message +
-			` Your message about "${userMessage}" touches on some important points that are worth exploring further.`
-		);
+		return responses.response_message;
 	}
 
 	function handleKeydown(event: KeyboardEvent): void {

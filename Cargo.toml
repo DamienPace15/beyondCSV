@@ -29,6 +29,7 @@ polars = { version = "0.46", features = ["lazy", "parquet", "serde", "sql"] }
 polars-sql = "0.46"
 
 
+
 [profile.release]
 lto = true
 codegen-units = 1
