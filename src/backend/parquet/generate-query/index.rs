@@ -83,6 +83,8 @@ async fn handler(
     You will need to make an SQL query from that schema and only return the SQL query and nothing else. No reasoning as to why. Just an SQL query.
     I will be using that SQL in a polars sql query in rust.
 
+    Make sure to use the best SQL queries, and use correct formatting
+
     example schema would be
      Schema:
         Name: String
@@ -100,6 +102,10 @@ async fn handler(
     Return an SQL statment like this nothing else. No extra special characters, make sure it's all on one line
 
     The table name must always be data, nothing else. Only parse one statement at a time.
+
+    Please make sure to qoute anything that has spaces properly. For example if you see a field in the Schema and use it to query something. give me the most common clean alternative fuel would become "clean alternative fuel" in a query
+
+    ANything that has spaces in the query needs to be quoted.
 
     SELECT * FROM data WHERE Country = 'Australia' AND Play = 'Basketball';
     "#;
