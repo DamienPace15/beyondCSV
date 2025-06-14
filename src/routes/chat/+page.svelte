@@ -19,18 +19,14 @@
 		response_message: string;
 	}
 
-	// Props and derived values
 	let { data }: { data: LayoutData } = $props();
 	let key: string | null = $derived($page.url.searchParams.get('key'));
 
-	console.log(key);
-
-	// State variables
 	let messages: Message[] = $state([
 		{
 			id: 1,
 			type: 'assistant',
-			content: 'Hello! Ask me anything about your data that you uploaded!',
+			content: 'Hello! Ask Buzz anything about your data that you uploaded!',
 			timestamp: new Date()
 		}
 	]);
@@ -39,6 +35,7 @@
 	let isTyping: boolean = $state(false);
 	let chatContainer: HTMLDivElement;
 	let messageInput: HTMLTextAreaElement;
+	let showEasterEgg: boolean = $state(false);
 
 	// Auto-scroll to bottom when new messages are added
 	$effect(() => {
@@ -49,8 +46,34 @@
 		}
 	});
 
+	function triggerBuzzLightyearEasterEgg(): void {
+		showEasterEgg = true;
+
+		const buzzResponse: Message = {
+			id: Date.now() + 2,
+			type: 'assistant',
+			content:
+				"🚀 TO INFINITY AND BEYOND! 🚀\n\nYou found the secret! I may be a data assistant, but I've got the heart of a Space Ranger! Now, what can this space-age AI help you discover in your data? The universe of insights awaits!",
+			timestamp: new Date()
+		};
+
+		messages = [...messages, buzzResponse];
+
+		setTimeout(() => {
+			showEasterEgg = false;
+		}, 3000);
+	}
+
 	async function sendMessage(): Promise<void> {
 		if (!currentMessage.trim() || isTyping) return;
+
+		// Check for easter egg trigger
+		const message = currentMessage.trim().toLowerCase();
+		const isEasterEggTrigger =
+			message.includes('to infinity and beyond') ||
+			message.includes('infinity and beyond') ||
+			message === 'to infinity and beyond!' ||
+			message === 'infinity and beyond!';
 
 		const userMessage: Message = {
 			id: Date.now(),
@@ -62,12 +85,16 @@
 		messages = [...messages, userMessage];
 		const messageToSend: string = currentMessage;
 		currentMessage = '';
+
+		// Trigger easter egg if detected
+		if (isEasterEggTrigger) {
+			triggerBuzzLightyearEasterEgg();
+			return;
+		}
+
 		isTyping = true;
 
 		try {
-			// Simulate AI response delay
-			await new Promise<void>((resolve) => setTimeout(resolve, 1000 + Math.random() * 2000));
-
 			const responseContent: string = await generateResponse(messageToSend);
 
 			const aiResponse: Message = {
@@ -120,8 +147,7 @@
 			{
 				id: 1,
 				type: 'assistant',
-				content:
-					"Hello! I'm Claude, an AI assistant created by Anthropic. How can I help you today?",
+				content: "Hello! I'm Buzz,. How can I help you today?",
 				timestamp: new Date()
 			}
 		];
@@ -133,21 +159,37 @@
 </script>
 
 <div class="chat-container">
+	<!-- Easter Egg Overlay -->
+	{#if showEasterEgg}
+		<div class="easter-egg-overlay">
+			<div class="buzz-lightyear-animation">
+				<div class="rocket">🚀</div>
+				<div class="stars">
+					<div class="star">⭐</div>
+					<div class="star">✨</div>
+					<div class="star">⭐</div>
+					<div class="star">✨</div>
+					<div class="star">⭐</div>
+				</div>
+				<div class="infinity-text">TO INFINITY AND BEYOND!</div>
+			</div>
+		</div>
+	{/if}
+
 	<header class="chat-header">
 		<div class="header-content">
 			<div class="header-left">
-				<div class="claude-avatar">
-					<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-						<path
-							d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"
-						/>
-					</svg>
+				<div class="buzz-avatar">
+					<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"> </svg>
 				</div>
 				<div class="header-info">
-					<h1>Claude</h1>
-					<p class="subtitle">AI Assistant by Anthropic</p>
+					<h1>Buzz</h1>
+					<p class="subtitle">
+						The natural language query assistant that can help with your data and beyond
+					</p>
 				</div>
 			</div>
+			<!-- svelte-ignore a11y_consider_explicit_label -->
 			<button class="clear-btn" onclick={clearChat} title="Clear conversation">
 				<svg
 					width="20"
@@ -173,12 +215,8 @@
 				<div class="message {message.type}">
 					<div class="message-avatar">
 						{#if message.type === 'assistant'}
-							<div class="avatar claude-avatar">
-								<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-									<path
-										d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"
-									/>
-								</svg>
+							<div class="avatar buzz-avatar">
+								<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"> </svg>
 							</div>
 						{:else}
 							<div class="avatar user-avatar">
@@ -210,12 +248,8 @@
 			{#if isTyping}
 				<div class="message assistant">
 					<div class="message-avatar">
-						<div class="avatar claude-avatar">
-							<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-								<path
-									d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"
-								/>
-							</svg>
+						<div class="avatar buzz-avatar">
+							<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"> </svg>
 						</div>
 					</div>
 					<div class="message-content">
@@ -239,11 +273,12 @@
 					bind:this={messageInput}
 					bind:value={currentMessage}
 					onkeydown={handleKeydown}
-					placeholder="Message Claude..."
+					placeholder="Ask Buzz about your dataset... (psst: try 'to infinity and beyond!')"
 					class="message-input"
 					rows="1"
 					disabled={isTyping}
 				></textarea>
+				<!-- svelte-ignore a11y_consider_explicit_label -->
 				<button
 					class="send-button"
 					onclick={sendMessage}
@@ -262,9 +297,6 @@
 						<polygon points="22,2 15,22 11,13 2,9 22,2" />
 					</svg>
 				</button>
-			</div>
-			<div class="input-footer">
-				<p>Claude can make mistakes. Please double-check responses.</p>
 			</div>
 		</div>
 	</footer>
@@ -292,6 +324,139 @@
 		background: #ffffff;
 		border-radius: 0;
 		box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+		position: relative;
+	}
+
+	/* Easter Egg Styles */
+	.easter-egg-overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 100vw;
+		height: 100vh;
+		background: linear-gradient(45deg, #1a1a2e, #16213e, #0f3460);
+		z-index: 1000;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		animation: easterEggFadeIn 0.5s ease-out;
+	}
+
+	.buzz-lightyear-animation {
+		text-align: center;
+		position: relative;
+	}
+
+	.rocket {
+		font-size: 8rem;
+		animation: rocketFly 2s ease-in-out;
+		display: block;
+		margin-bottom: 2rem;
+	}
+
+	.stars {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
+	}
+
+	.star {
+		position: absolute;
+		font-size: 2rem;
+		animation: starTwinkle 1.5s infinite ease-in-out;
+	}
+
+	.star:nth-child(1) {
+		top: 20%;
+		left: 10%;
+		animation-delay: 0s;
+	}
+
+	.star:nth-child(2) {
+		top: 30%;
+		right: 15%;
+		animation-delay: 0.3s;
+	}
+
+	.star:nth-child(3) {
+		bottom: 40%;
+		left: 20%;
+		animation-delay: 0.6s;
+	}
+
+	.star:nth-child(4) {
+		bottom: 30%;
+		right: 25%;
+		animation-delay: 0.9s;
+	}
+
+	.star:nth-child(5) {
+		top: 50%;
+		left: 50%;
+		animation-delay: 1.2s;
+	}
+
+	.infinity-text {
+		font-size: 3rem;
+		font-weight: bold;
+		color: #00ff88;
+		text-shadow:
+			0 0 20px #00ff88,
+			0 0 40px #00ff88;
+		animation: infinityGlow 1s ease-in-out infinite alternate;
+		letter-spacing: 0.1em;
+	}
+
+	@keyframes easterEggFadeIn {
+		from {
+			opacity: 0;
+			transform: scale(0.8);
+		}
+		to {
+			opacity: 1;
+			transform: scale(1);
+		}
+	}
+
+	@keyframes rocketFly {
+		0% {
+			transform: translateX(-100vw) rotate(-45deg);
+		}
+		50% {
+			transform: translateX(0) rotate(0deg);
+		}
+		100% {
+			transform: translateX(0) rotate(0deg) scale(1.2);
+		}
+	}
+
+	@keyframes starTwinkle {
+		0%,
+		100% {
+			opacity: 0.3;
+			transform: scale(1);
+		}
+		50% {
+			opacity: 1;
+			transform: scale(1.3);
+		}
+	}
+
+	@keyframes infinityGlow {
+		0% {
+			text-shadow:
+				0 0 20px #00ff88,
+				0 0 40px #00ff88;
+		}
+		100% {
+			text-shadow:
+				0 0 30px #00ff88,
+				0 0 60px #00ff88,
+				0 0 80px #00ff88;
+		}
 	}
 
 	.chat-header {
@@ -314,7 +479,7 @@
 		gap: 1rem;
 	}
 
-	.claude-avatar {
+	.buzz-avatar {
 		width: 40px;
 		height: 40px;
 		background: #ff9900;
@@ -401,7 +566,7 @@
 		border: 2px solid;
 	}
 
-	.avatar.claude-avatar {
+	.avatar.buzz-avatar {
 		background: #ff9900;
 		color: #000000;
 		border-color: #ff9900;
@@ -427,6 +592,7 @@
 		color: #0f1419;
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 		font-size: 0.95rem;
+		white-space: pre-wrap;
 	}
 
 	.message.user .message-text {
@@ -560,12 +726,6 @@
 		margin-top: 0.75rem;
 	}
 
-	.input-footer p {
-		margin: 0;
-		font-size: 0.8rem;
-		color: #666;
-	}
-
 	@keyframes slideIn {
 		from {
 			opacity: 0;
@@ -615,6 +775,18 @@
 
 		.chat-footer {
 			padding: 1rem;
+		}
+
+		.rocket {
+			font-size: 4rem;
+		}
+
+		.infinity-text {
+			font-size: 1.5rem;
+		}
+
+		.star {
+			font-size: 1.5rem;
 		}
 	}
 
