@@ -179,7 +179,7 @@
 	<header class="chat-header">
 		<div class="header-content">
 			<div class="header-left">
-				<div class="claude-avatar">
+				<div class="buzz-avatar">
 					<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"> </svg>
 				</div>
 				<div class="header-info">
@@ -215,7 +215,7 @@
 				<div class="message {message.type}">
 					<div class="message-avatar">
 						{#if message.type === 'assistant'}
-							<div class="avatar claude-avatar">
+							<div class="avatar buzz-avatar">
 								<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"> </svg>
 							</div>
 						{:else}
@@ -248,7 +248,7 @@
 			{#if isTyping}
 				<div class="message assistant">
 					<div class="message-avatar">
-						<div class="avatar claude-avatar">
+						<div class="avatar buzz-avatar">
 							<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"> </svg>
 						</div>
 					</div>
@@ -479,7 +479,7 @@
 		gap: 1rem;
 	}
 
-	.claude-avatar {
+	.buzz-avatar {
 		width: 40px;
 		height: 40px;
 		background: #ff9900;
@@ -566,7 +566,7 @@
 		border: 2px solid;
 	}
 
-	.avatar.claude-avatar {
+	.avatar.buzz-avatar {
 		background: #ff9900;
 		color: #000000;
 		border-color: #ff9900;
