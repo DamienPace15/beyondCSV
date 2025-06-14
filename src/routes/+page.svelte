@@ -31,13 +31,11 @@
 	];
 
 	function validateCSVFile(file: File): boolean {
-		// Check file extension
 		const fileName = file.name.toLowerCase();
 		if (!fileName.endsWith('.csv')) {
 			return false;
 		}
 
-		// Check MIME type (optional, as CSV can have different MIME types)
 		const validMimeTypes = [
 			'text/csv',
 			'application/csv',
@@ -66,10 +64,8 @@
 			}
 		}
 
-		// Add the last field
 		result.push(current.trim());
 
-		// Remove quotes from fields that are fully quoted
 		return result.map((field) => {
 			if (field.startsWith('"') && field.endsWith('"')) {
 				return field.slice(1, -1);
@@ -84,11 +80,9 @@
 			const chunk = file.slice(0, 1024);
 			const text = await chunk.text();
 
-			// Find the first line break to get just the first row
 			const firstLineEnd = text.indexOf('\n');
 			const firstLine = firstLineEnd !== -1 ? text.substring(0, firstLineEnd) : text;
 
-			// Parse the first row
 			const headers = parseCSVRow(firstLine.trim());
 
 			if (headers.length === 0) {
@@ -106,31 +100,20 @@
 	function initializeColumnTypes(headers: string[]) {
 		const types: { [key: string]: string } = {};
 		headers.forEach((header) => {
-			types[header] = 'string'; // Default to string type
+			types[header] = 'string';
 		});
 		columnTypes = types;
-		excludedColumns = new Set(); // Reset excluded columns when new headers are loaded
+		excludedColumns = new Set();
 	}
 
 	function updateColumnType(header: string, type: string) {
 		columnTypes = { ...columnTypes, [header]: type };
 	}
 
-	function setAllColumnsType(type: string) {
-		const newTypes: { [key: string]: string } = {};
-		csvHeaders.forEach((header) => {
-			if (!excludedColumns.has(header)) {
-				newTypes[header] = type;
-			}
-		});
-		columnTypes = { ...columnTypes, ...newTypes };
-	}
-
 	function toggleColumnExclusion(header: string) {
 		const newExcluded = new Set(excludedColumns);
 		if (newExcluded.has(header)) {
 			newExcluded.delete(header);
-			// When re-including a column, set it to default string type if it doesn't have a type
 			if (!columnTypes[header]) {
 				columnTypes = { ...columnTypes, [header]: 'string' };
 			}
@@ -142,7 +125,6 @@
 
 	function includeAllColumns() {
 		excludedColumns = new Set();
-		// Ensure all headers have a type
 		const newTypes = { ...columnTypes };
 		csvHeaders.forEach((header) => {
 			if (!newTypes[header]) {
@@ -150,10 +132,6 @@
 			}
 		});
 		columnTypes = newTypes;
-	}
-
-	function excludeAllColumns() {
-		excludedColumns = new Set(csvHeaders);
 	}
 
 	function getIncludedHeaders(): string[] {
@@ -170,7 +148,6 @@
 	}
 
 	async function handleFileChange() {
-		// Reset states
 		csvHeaders = [];
 		columnTypes = {};
 		excludedColumns = new Set();
@@ -184,13 +161,11 @@
 
 		const file = files[0];
 
-		// Validate CSV file
 		if (!validateCSVFile(file)) {
 			error = 'Please select a valid CSV file (.csv extension required)';
 			return;
 		}
 
-		// Read CSV headers
 		isReadingHeaders = true;
 		try {
 			csvHeaders = await readCSVHeaders(file);
@@ -206,7 +181,6 @@
 		return new Promise<void>((resolve, reject) => {
 			const xhr = new XMLHttpRequest();
 
-			// Track upload progress
 			xhr.upload.addEventListener('progress', (event) => {
 				if (event.lengthComputable) {
 					uploadProgress = (event.loaded / event.total) * 100;
@@ -245,7 +219,6 @@
 
 		const file = files[0];
 
-		// Validate CSV file
 		if (!validateCSVFile(file)) {
 			error = 'Please select a valid CSV file (.csv extension required)';
 			return;
@@ -262,12 +235,8 @@
 		error = '';
 
 		try {
-			// Get the column type schema (only for included columns)
 			const typeSchema = getColumnTypeSchema();
-			console.log('Column Type Schema:', typeSchema);
-			console.log('Excluded Columns:', Array.from(excludedColumns));
 
-			// Upload directly to S3 using the presigned URL from environment
 			uploadStatus = `Uploading ${file.name} to S3...`;
 			await uploadToS3(presignedUrl, file);
 
@@ -275,8 +244,6 @@
 			uploadProgress = 100;
 
 			const response = await parseCsvToParquet(data.env.CORE_API_URL, typeSchema, key);
-
-			console.log(response);
 
 			if (response.statusCode !== 200) {
 				console.log('failed');
@@ -308,10 +275,8 @@
 </script>
 
 <div class="page-container">
-	<h1>S3 CSV Upload</h1>
-	<p class="subtitle">
-		Upload your CSV files with instant header preview and column type selection
-	</p>
+	<h1>Buzz CSV</h1>
+	<p class="subtitle">Upload your CSV files so that you can query your data in plain english</p>
 	<div class="main-content">
 		<div class="upload-container">
 			<div class="form-group">
@@ -358,23 +323,6 @@
 								>
 									Include All
 								</button>
-								<button
-									type="button"
-									class="bulk-btn exclude-all"
-									onclick={excludeAllColumns}
-									disabled={excludedColumns.size === csvHeaders.length}
-								>
-									Exclude All
-								</button>
-							</div>
-							<div class="bulk-action-group">
-								<label>Set included to:</label>
-								<select onchange={(e) => setAllColumnsType(e.target.value)}>
-									<option value="">Select type...</option>
-									{#each dataTypes as type}
-										<option value={type.value}>{type.label}</option>
-									{/each}
-								</select>
 							</div>
 						</div>
 					</div>
@@ -514,11 +462,6 @@
 							{Array.from(excludedColumns).join(', ')}
 						</div>
 					{/if}
-
-					<details class="type-schema">
-						<summary>Column Type Schema (for Lambda)</summary>
-						<code>{JSON.stringify(getColumnTypeSchema(), null, 2)}</code>
-					</details>
 				</div>
 			{/if}
 
@@ -760,37 +703,9 @@
 		border-color: #b3d9cc;
 	}
 
-	.bulk-btn.exclude-all {
-		background: #f8d7da;
-		color: #721c24;
-		border-color: #f5c6cb;
-	}
-
-	.bulk-btn.exclude-all:hover:not(:disabled) {
-		background: #f5c6cb;
-		border-color: #f1b0b7;
-	}
-
 	.bulk-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
-	}
-
-	.bulk-action-group select {
-		padding: 0.5rem 0.75rem;
-		border: 1px solid #d5dbdb;
-		border-radius: 4px;
-		font-size: 0.9rem;
-		background: white;
-		color: #0f1419;
-		font-family: inherit;
-		transition: all 0.2s ease;
-	}
-
-	.bulk-action-group select:focus {
-		outline: none;
-		border-color: #ff9900;
-		box-shadow: 0 0 0 2px rgba(255, 153, 0, 0.2);
 	}
 
 	.column-types-grid {
@@ -1099,42 +1014,6 @@
 
 	.decision-tip strong {
 		color: #146eb4;
-	}
-
-	.type-schema {
-		margin-top: 1rem;
-	}
-
-	.type-schema summary {
-		cursor: pointer;
-		font-weight: 600;
-		color: #146eb4;
-		padding: 1rem;
-		background: #ffffff;
-		border-radius: 4px;
-		border: 1px solid #d5dbdb;
-		transition: all 0.2s ease;
-		user-select: none;
-	}
-
-	.type-schema summary:hover {
-		background: #f2f3f3;
-		border-color: #146eb4;
-	}
-
-	.type-schema code {
-		display: block;
-		background: #232f3e;
-		color: #ffffff;
-		padding: 1.5rem;
-		border-radius: 4px;
-		font-family: 'Courier New', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
-		font-size: 0.85rem;
-		white-space: pre-wrap;
-		margin-top: 0.75rem;
-		overflow-x: auto;
-		border: 1px solid #37475a;
-		word-break: break-word;
 	}
 
 	.button-group {

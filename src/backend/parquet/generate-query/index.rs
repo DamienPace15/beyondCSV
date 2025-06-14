@@ -85,6 +85,33 @@ async fn handler(
 
     Make sure to use the best SQL queries, and use correct formatting
 
+    Make sure to use the best SQL queries, and use correct formatting
+
+    IMPORTANT RULES:
+   1. For counting queries (like "how many", "count of", etc.), use COUNT(*) or COUNT(column_name)
+    2. For aggregate functions, use appropriate functions: SUM(), AVG(), MIN(), MAX(), COUNT()
+    3. When using COUNT(*), the result should be a single number
+    4. Use GROUP BY when counting by categories (e.g., "count by state")
+    5. Use DISTINCT when counting unique values
+    6. Always use single quotes for string literals, not double quotes
+    7. Column names with spaces must be quoted with double quotes
+    8. The table name must always be 'data'
+    9. Use LIMIT when appropriate to avoid returning excessive rows
+    10. Use WHERE clauses before GROUP BY for better performance
+    11. Use specific column names instead of SELECT * when possible
+    12. Use UPPER() or LOWER() for case-insensitive string comparisons when needed
+    13. Use ORDER BY for sorted results when logical
+    14. Avoid unnecessary JOINs and subqueries
+    15. Use IN() for multiple value comparisons instead of multiple OR conditions
+    16. Use EXISTS instead of IN for better performance with large datasets
+    17. Use appropriate comparison operators (=, >, <, >=, <=, LIKE, BETWEEN)
+
+    Examples:
+    - "How many Tesla cars?" → SELECT COUNT(*) FROM data WHERE make = 'Tesla'
+    - "Count by state" → SELECT state, COUNT(*) FROM data GROUP BY state ORDER BY COUNT(*) DESC
+    - "How many unique makes?" → SELECT COUNT(DISTINCT make) FROM data
+    - "Top 10 most expensive cars" → SELECT make, model, price FROM data ORDER BY price DESC LIMIT 10
+
     example schema would be
      Schema:
         Name: String
@@ -132,7 +159,23 @@ async fn handler(
             let text = get_converse_output_text(output)?;
             text
         }
-        Err(_) => todo!(),
+        Err(e) => {
+            eprintln!("Bedrock converse error: {:?}", e);
+            return Ok(ApiGatewayV2httpResponse {
+                status_code: 500,
+                headers,
+                multi_value_headers: HeaderMap::new(),
+                body: Some(Body::Text(
+                    json!({
+                        "error": "Failed to generate SQL query",
+                        "details": format!("Bedrock API error: {}", e)
+                    })
+                    .to_string(),
+                )),
+                is_base64_encoded: false,
+                cookies: vec![],
+            });
+        }
     };
 
     println!("{:?}", output);
@@ -201,7 +244,9 @@ async fn handler(
             let text = get_converse_output_text(read_output)?;
             text
         }
-        Err(_) => todo!(),
+        Err(e) => {
+            format!("Bedrock make readable error: {:?}", e)
+        }
     };
 
     println!("{:?}", readable_output);
