@@ -107,12 +107,15 @@ async fn handler(
     15. Use IN() for multiple value comparisons instead of multiple OR conditions
     16. Use EXISTS instead of IN for better performance with large datasets
     17. Use appropriate comparison operators (=, >, <, >=, <=, LIKE, BETWEEN)
+    18. CRITICAL: When using COUNT(*) with ORDER BY, you MUST alias it. For example: SELECT state, COUNT(*) as count FROM data GROUP BY state ORDER BY count DESC
+    19. Never use COUNT(*) directly in ORDER BY clause - always use the alias
 
     Examples:
     - "How many Tesla cars?" → SELECT COUNT(*) FROM data WHERE make = 'Tesla'
-    - "Count by state" → SELECT state, COUNT(*) FROM data GROUP BY state ORDER BY COUNT(*) DESC
+    - "Count by state" → SELECT state, COUNT(*) as count FROM data GROUP BY state ORDER BY count DESC
     - "How many unique makes?" → SELECT COUNT(DISTINCT make) FROM data
     - "Top 10 most expensive cars" → SELECT make, model, price FROM data ORDER BY price DESC LIMIT 10
+    - "Most common state" → SELECT state, COUNT(*) as count FROM data GROUP BY state ORDER BY count DESC LIMIT 1
 
     example schema would be
      Schema:
