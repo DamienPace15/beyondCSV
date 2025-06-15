@@ -21,7 +21,7 @@ export const apiGateway = new sst.aws.ApiGatewayV2('easyCSV', {
 apiGateway.route('POST /parquet-creation', {
 	handler: './.parquet-creation',
 	runtime: 'rust',
-	memory: '1028 MB',
+	memory: '3008 MB',
 	timeout: '500 seconds',
 	logging: { logGroup: `${$app.stage}-create-parquet` },
 	environment: { S3_UPLOAD_BUCKET_NAME: s3Bucket.name },

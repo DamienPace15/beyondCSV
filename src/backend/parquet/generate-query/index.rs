@@ -16,10 +16,7 @@ use polars_sql::SQLContext;
 use serde::Deserialize;
 use serde_json::json;
 use std::env;
-use std::fs;
-use uuid::Uuid;
-
-use std::path::PathBuf;
+use std::io::Cursor;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -57,11 +54,16 @@ async fn handler(
     let config = aws_config::load_from_env().await;
     let s3_client = S3Client::new(&config);
 
-    let temp_file_path =
-        download_parquet_to_tmp(&s3_client, &bucket_name, &request.parquet_key).await?;
+    // Stream parquet data directly into memory
+    let parquet_bytes =
+        stream_parquet_from_s3(&s3_client, &bucket_name, &request.parquet_key).await?;
 
-    let lf = LazyFrame::scan_parquet(&temp_file_path, Default::default())?;
+    // Create LazyFrame from in-memory bytes
+    let cursor = Cursor::new(parquet_bytes);
+    let df = ParquetReader::new(cursor).finish()?;
+    let lf = df.lazy();
 
+    // Get schema from the first row
     let collected_rows: DataFrame = lf.clone().limit(1).collect()?;
     let schema = collected_rows.schema();
 
@@ -105,12 +107,15 @@ async fn handler(
     15. Use IN() for multiple value comparisons instead of multiple OR conditions
     16. Use EXISTS instead of IN for better performance with large datasets
     17. Use appropriate comparison operators (=, >, <, >=, <=, LIKE, BETWEEN)
+    18. CRITICAL: When using COUNT(*) with ORDER BY, you MUST alias it. For example: SELECT state, COUNT(*) as count FROM data GROUP BY state ORDER BY count DESC
+    19. Never use COUNT(*) directly in ORDER BY clause - always use the alias
 
     Examples:
     - "How many Tesla cars?" → SELECT COUNT(*) FROM data WHERE make = 'Tesla'
-    - "Count by state" → SELECT state, COUNT(*) FROM data GROUP BY state ORDER BY COUNT(*) DESC
+    - "Count by state" → SELECT state, COUNT(*) as count FROM data GROUP BY state ORDER BY count DESC
     - "How many unique makes?" → SELECT COUNT(DISTINCT make) FROM data
     - "Top 10 most expensive cars" → SELECT make, model, price FROM data ORDER BY price DESC LIMIT 10
+    - "Most common state" → SELECT state, COUNT(*) as count FROM data GROUP BY state ORDER BY count DESC LIMIT 1
 
     example schema would be
      Schema:
@@ -265,17 +270,12 @@ async fn handler(
     })
 }
 
-async fn download_parquet_to_tmp(
+async fn stream_parquet_from_s3(
     s3_client: &S3Client,
     bucket: &str,
     key: &str,
-) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
-    // Generate random filename
-    let random_id = Uuid::new_v4();
-    let filename = format!("{}.parquet", random_id);
-    let temp_path = PathBuf::from("/tmp").join(filename);
-
-    // Download from S3
+) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+    // Stream from S3 directly into memory
     let response = s3_client
         .get_object()
         .bucket(bucket)
@@ -283,14 +283,11 @@ async fn download_parquet_to_tmp(
         .send()
         .await?;
 
-    // Read the data
+    // Collect the bytes into a Vec<u8>
     let data = response.body.collect().await?;
-    let bytes = data.into_bytes();
+    let bytes = data.into_bytes().to_vec();
 
-    // Write to temp file
-    fs::write(&temp_path, bytes)?;
-
-    Ok(temp_path)
+    Ok(bytes)
 }
 
 fn get_converse_output_text(output: ConverseOutput) -> Result<String, Error> {
