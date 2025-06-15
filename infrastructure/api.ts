@@ -1,3 +1,4 @@
+import { dynamoTable } from './dynamo';
 import { s3Bucket } from './storage';
 
 export const apiGateway = new sst.aws.ApiGatewayV2('easyCSV', {
@@ -18,18 +19,31 @@ export const apiGateway = new sst.aws.ApiGatewayV2('easyCSV', {
 	}
 });
 
+const parquetQueue = new sst.aws.Queue('parqueCreationProcessorQueue', {
+	transform: {
+		queue: { name: `${$app.name}-parque-creation-processor`, receiveWaitTimeSeconds: 20 }
+	}
+});
+
 apiGateway.route('POST /parquet-creation', {
 	handler: './.parquet-creation',
 	runtime: 'rust',
-	memory: '3008 MB',
-	timeout: '500 seconds',
+	memory: '128 MB',
 	logging: { logGroup: `${$app.stage}-create-parquet` },
-	environment: { S3_UPLOAD_BUCKET_NAME: s3Bucket.name },
+	environment: {
+		DYNAMODB_NAME: dynamoTable.name,
+		PARQUET_QUEUE_URL: parquetQueue.url
+	},
 	permissions: [
 		{
-			actions: ['s3:GetObject', 's3:Putobject'],
+			actions: ['dynamodb:PutItem'],
 			effect: 'allow',
-			resources: [s3Bucket.arn, s3Bucket.arn.apply((arn) => `${arn}/*`)]
+			resources: [dynamoTable.arn]
+		},
+		{
+			actions: ['sqs:SendMessage'],
+			effect: 'allow',
+			resources: [parquetQueue.arn]
 		}
 	],
 	transform: {
@@ -38,6 +52,34 @@ apiGateway.route('POST /parquet-creation', {
 		}
 	}
 });
+
+const parquetProcessorLambda = new sst.aws.Function('createParquetProcessor', {
+	handler: './.parquet-creation-processor',
+	runtime: 'rust',
+	memory: '3008 MB',
+	timeout: '500 seconds',
+	logging: { logGroup: `${$app.stage}-create-parquet-processor` },
+	environment: { S3_UPLOAD_BUCKET_NAME: s3Bucket.name },
+	permissions: [
+		{
+			actions: ['s3:GetObject', 's3:Putobject'],
+			effect: 'allow',
+			resources: [s3Bucket.arn, s3Bucket.arn.apply((arn) => `${arn}/*`)]
+		},
+		{
+			actions: ['sqs:ReceiveMessage'],
+			effect: 'allow',
+			resources: [parquetQueue.arn]
+		}
+	],
+	transform: {
+		function: {
+			name: `${$app.stage}-create-parquet-processor`
+		}
+	}
+});
+
+parquetQueue.subscribe(parquetProcessorLambda.arn);
 
 apiGateway.route('POST /generate-parquet-query', {
 	handler: './.generate-parquet-query',
