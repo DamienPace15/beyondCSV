@@ -20,6 +20,7 @@ export const apiGateway = new sst.aws.ApiGatewayV2('easyCSV', {
 });
 
 const parquetQueue = new sst.aws.Queue('parqueCreationProcessorQueue', {
+	visibilityTimeout: '500 seconds',
 	transform: {
 		queue: { name: `${$app.name}-parque-creation-processor`, receiveWaitTimeSeconds: 20 }
 	}
@@ -59,7 +60,7 @@ const parquetProcessorLambda = new sst.aws.Function('createParquetProcessor', {
 	memory: '3008 MB',
 	timeout: '500 seconds',
 	logging: { logGroup: `${$app.stage}-create-parquet-processor` },
-	environment: { S3_UPLOAD_BUCKET_NAME: s3Bucket.name },
+	environment: { S3_UPLOAD_BUCKET_NAME: s3Bucket.name, DYNAMODB_NAME: dynamoTable.name },
 	permissions: [
 		{
 			actions: ['s3:GetObject', 's3:Putobject'],
@@ -67,9 +68,14 @@ const parquetProcessorLambda = new sst.aws.Function('createParquetProcessor', {
 			resources: [s3Bucket.arn, s3Bucket.arn.apply((arn) => `${arn}/*`)]
 		},
 		{
-			actions: ['sqs:ReceiveMessage'],
+			actions: ['sqs:ReceiveMessage', 'sqs:DeleteMessage', 'sqs:GetQueueAttributes'],
 			effect: 'allow',
 			resources: [parquetQueue.arn]
+		},
+		{
+			actions: ['dynamodb:UpdateItem'],
+			effect: 'allow',
+			resources: [dynamoTable.arn]
 		}
 	],
 	transform: {
@@ -103,6 +109,28 @@ apiGateway.route('POST /generate-parquet-query', {
 	transform: {
 		function: {
 			name: `${$app.stage}-generate-parquet-query`
+		}
+	}
+});
+
+apiGateway.route('GET /poll-parquet-status/{job_id}', {
+	handler: './.poll-parquet-status',
+	runtime: 'rust',
+	memory: '128 MB',
+	logging: { logGroup: `${$app.stage}-poll-parquet-status` },
+	environment: {
+		DYNAMODB_NAME: dynamoTable.name
+	},
+	permissions: [
+		{
+			actions: ['dynamodb:GetItem'],
+			effect: 'allow',
+			resources: [dynamoTable.arn]
+		}
+	],
+	transform: {
+		function: {
+			name: `${$app.stage}-poll-parquet-status`
 		}
 	}
 });

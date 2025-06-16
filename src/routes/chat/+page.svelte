@@ -1,10 +1,13 @@
 <!-- +page.svelte -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { tick } from 'svelte';
 	import { generateResponseFromMessage } from './queryData';
 	import { page } from '$app/stores';
 	import type { LayoutData } from './$types';
+
+	// Import your polling function
+	import { pollStatus } from './queryData';
 
 	// Type definitions
 	interface Message {
@@ -20,7 +23,7 @@
 	}
 
 	let { data }: { data: LayoutData } = $props();
-	let key: string | null = $derived($page.url.searchParams.get('key'));
+	let job_id: string | null = $derived($page.url.searchParams.get('id'));
 
 	let messages: Message[] = $state([
 		{
@@ -37,6 +40,14 @@
 	let messageInput: HTMLTextAreaElement;
 	let showEasterEgg: boolean = $state(false);
 
+	// Polling state
+	let isParquetReady: boolean = $state(false);
+	let isPolling: boolean = $state(false);
+	let pollingInterval: number | null = null;
+	let key: string | null = null; // You'll need to get this from somewhere
+
+	console.log(isParquetReady);
+
 	// Auto-scroll to bottom when new messages are added
 	$effect(() => {
 		if (chatContainer && messages.length > 0) {
@@ -45,6 +56,66 @@
 			});
 		}
 	});
+
+	async function startPolling(): Promise<void> {
+		if (!job_id || !data.env.CORE_API_URL) {
+			console.error('Missing job_id or CORE_API_URL');
+			return;
+		}
+
+		isPolling = true;
+
+		const poll = async (): Promise<void> => {
+			try {
+				const result = await pollStatus(data.env.CORE_API_URL!, job_id!);
+
+				if (result.parquet_complete) {
+					isParquetReady = true;
+					isPolling = false;
+					if (pollingInterval) {
+						clearInterval(pollingInterval);
+						pollingInterval = null;
+					}
+
+					// Update the initial message to indicate data is ready
+					messages = [
+						{
+							id: 1,
+							type: 'assistant',
+							content: 'Hello! Your data is ready! Ask Buzz anything about your uploaded data!',
+							timestamp: new Date()
+						}
+					];
+				}
+			} catch (error) {
+				console.error('Polling error:', error);
+				// Optionally show an error message to the user
+				if (messages.length === 1 && messages[0].content.includes('processing')) {
+					messages = [
+						{
+							id: 1,
+							type: 'assistant',
+							content: 'There was an issue processing your data. Please try uploading again.',
+							timestamp: new Date()
+						}
+					];
+				}
+				isPolling = false;
+				if (pollingInterval) {
+					clearInterval(pollingInterval);
+					pollingInterval = null;
+				}
+			}
+		};
+
+		// Initial poll
+		await poll();
+
+		// Continue polling every 15 seconds if not complete
+		if (!isParquetReady && isPolling) {
+			pollingInterval = setInterval(poll, 15000);
+		}
+	}
 
 	function triggerBuzzLightyearEasterEgg(): void {
 		showEasterEgg = true;
@@ -66,6 +137,19 @@
 
 	async function sendMessage(): Promise<void> {
 		if (!currentMessage.trim() || isTyping) return;
+
+		// Check if parquet is ready before allowing queries
+		if (!isParquetReady && job_id) {
+			const waitingMessage: Message = {
+				id: Date.now(),
+				type: 'assistant',
+				content:
+					"Please wait while your data is being processed. I'll let you know when it's ready!",
+				timestamp: new Date()
+			};
+			messages = [...messages, waitingMessage];
+			return;
+		}
 
 		// Check for easter egg trigger
 		const message = currentMessage.trim().toLowerCase();
@@ -143,11 +227,15 @@
 	}
 
 	function clearChat(): void {
+		const initialMessage = isParquetReady
+			? "Hello! I'm Buzz. How can I help you today?"
+			: "Hello! Your data is being processed. I'll let you know when it's ready!";
+
 		messages = [
 			{
 				id: 1,
 				type: 'assistant',
-				content: "Hello! I'm Buzz,. How can I help you today?",
+				content: initialMessage,
 				timestamp: new Date()
 			}
 		];
@@ -155,6 +243,33 @@
 
 	onMount(() => {
 		messageInput?.focus();
+
+		// Start polling if we have a job_id
+		if (job_id) {
+			// Update initial message to show processing status
+			messages = [
+				{
+					id: 1,
+					type: 'assistant',
+					content:
+						"Hello! Your data is being processed. I'll let you know when it's ready to query!",
+					timestamp: new Date()
+				}
+			];
+
+			startPolling();
+		} else {
+			// No job_id means data is already ready or no data upload
+			isParquetReady = true;
+		}
+	});
+
+	onDestroy(() => {
+		// Clean up polling interval when component is destroyed
+		if (pollingInterval) {
+			clearInterval(pollingInterval);
+			pollingInterval = null;
+		}
 	});
 </script>
 
@@ -186,6 +301,9 @@
 					<h1>Buzz</h1>
 					<p class="subtitle">
 						The natural language query assistant that can help with your data and beyond
+						{#if isPolling}
+							<span class="processing-indicator">• Processing data...</span>
+						{/if}
 					</p>
 				</div>
 			</div>
@@ -273,16 +391,18 @@
 					bind:this={messageInput}
 					bind:value={currentMessage}
 					onkeydown={handleKeydown}
-					placeholder="Ask Buzz about your dataset... (psst: try 'to infinity and beyond!')"
+					placeholder={isParquetReady
+						? "Ask Buzz about your dataset... (psst: try 'to infinity and beyond!')"
+						: 'Please wait while your data is being processed...'}
 					class="message-input"
 					rows="1"
-					disabled={isTyping}
+					disabled={isTyping || !isParquetReady}
 				></textarea>
 				<!-- svelte-ignore a11y_consider_explicit_label -->
 				<button
 					class="send-button"
 					onclick={sendMessage}
-					disabled={!currentMessage.trim() || isTyping}
+					disabled={!currentMessage.trim() || isTyping || !isParquetReady}
 					title="Send message (Enter)"
 				>
 					<svg
@@ -325,6 +445,23 @@
 		border-radius: 0;
 		box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
 		position: relative;
+	}
+
+	/* Processing indicator */
+	.processing-indicator {
+		color: #ff9900;
+		font-weight: 500;
+		animation: processingPulse 2s infinite ease-in-out;
+	}
+
+	@keyframes processingPulse {
+		0%,
+		100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.6;
+		}
 	}
 
 	/* Easter Egg Styles */

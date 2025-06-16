@@ -1,14 +1,10 @@
-use aws_lambda_events::{
-    apigw::{ApiGatewayV2httpRequest, ApiGatewayV2httpResponse},
-    encodings::Body,
-    http::HeaderMap,
-};
+use aws_lambda_events::event::sqs::{SqsEvent, SqsMessage};
+use aws_sdk_dynamodb::Client as DynamoDbClient;
 use aws_sdk_s3::Client as S3Client;
 use lambda_runtime::{Error, LambdaEvent, service_fn};
-use serde_json::json;
 use std::env;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 use uuid::Uuid;
 
 use arrow::array::{
@@ -78,8 +74,8 @@ struct ColumnDefinition {
 #[derive(serde::Deserialize, Debug)]
 struct ParquetCreationRequest {
     payload: Vec<ColumnDefinition>,
-    #[serde(rename = "s3Key")]
     s3_key: String,
+    job_id: String,
 }
 
 // More efficient row representation using Vec instead of HashMap
@@ -97,52 +93,73 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 
-async fn handler(
-    event: LambdaEvent<ApiGatewayV2httpRequest>,
-) -> Result<ApiGatewayV2httpResponse, Error> {
-    let body = event.payload.body.unwrap_or_default();
+async fn handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
     let bucket_name = env::var("S3_UPLOAD_BUCKET_NAME")?;
+    let table_name = env::var("DYNAMODB_NAME")?;
 
-    let request: ParquetCreationRequest = serde_json::from_str(&body)
-        .map_err(|e| lambda_runtime::Error::from(format!("Failed to parse JSON: {}", e)))?;
+    // Process each SQS message
+    for record in event.payload.records {
+        if let Err(e) = process_sqs_message(&record, &bucket_name, &table_name).await {
+            error!(
+                "Failed to process SQS message {}: {}",
+                record.message_id.unwrap_or_default(),
+                e
+            );
+            // Continue processing other messages instead of failing the entire batch
+            continue;
+        }
+    }
 
-    info!("Processing request with {} columns", request.payload.len());
-    info!("S3 key: {}", request.s3_key);
+    Ok(())
+}
+
+async fn process_sqs_message(
+    record: &SqsMessage,
+    bucket_name: &str,
+    table_name: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let body = record.body.as_ref().ok_or("SQS message has no body")?;
+
+    println!("What is the body {:?}", body);
+
+    let request: ParquetCreationRequest = serde_json::from_str(body)
+        .map_err(|e| format!("Failed to parse JSON from SQS message: {}", e))?;
+
+    println!("What is the request {:?}", request);
+
+    println!(
+        "Processing job {} with {} columns",
+        request.job_id,
+        request.payload.len()
+    );
+    println!("S3 key: {}", request.s3_key);
 
     let start_time = std::time::Instant::now();
 
-    // Use multipart upload for large files
-    let parquet_key = format!("parquet/{}.parquet", Uuid::new_v4());
+    // Use job_id in the parquet filename for better traceability
+    let parquet_key = format!("parquet/{}-{}.parquet", request.job_id, Uuid::new_v4());
 
     stream_csv_to_parquet_multipart(
-        &bucket_name,
+        bucket_name,
         &request.s3_key,
         &request.payload,
         &parquet_key,
+        &request.job_id,
     )
     .await?;
 
-    info!(
-        "Converted to Parquet in {:.2} seconds",
+    println!(
+        "Job {} converted to Parquet in {:.2} seconds",
+        request.job_id,
         start_time.elapsed().as_secs_f64()
     );
 
-    let mut headers = HeaderMap::new();
-    headers.insert("Content-Type", "application/json".parse().unwrap());
+    println!("Am I getting there?");
 
-    Ok(ApiGatewayV2httpResponse {
-        status_code: 200,
-        headers,
-        multi_value_headers: HeaderMap::new(),
-        body: Some(Body::Text(
-            json!({
-                "parquet_key": parquet_key
-            })
-            .to_string(),
-        )),
-        is_base64_encoded: false,
-        cookies: vec![],
-    })
+    // Update DynamoDB record to success
+    update_job_status_to_success(table_name, &request.job_id).await?;
+
+    Ok(())
 }
 
 async fn stream_csv_to_parquet_multipart(
@@ -150,13 +167,14 @@ async fn stream_csv_to_parquet_multipart(
     key: &str,
     column_definitions: &[ColumnDefinition],
     output_key: &str,
+    job_id: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let config = aws_config::load_from_env().await;
     let s3_client = S3Client::new(&config);
 
-    info!(
-        "Starting memory-efficient streaming from S3: bucket={}, key={}",
-        bucket, key
+    println!(
+        "Job {}: Starting memory-efficient streaming from S3: bucket={}, key={}",
+        job_id, bucket, key
     );
 
     // Get file size for progress tracking
@@ -167,8 +185,10 @@ async fn stream_csv_to_parquet_multipart(
         .send()
         .await?;
     let content_length = head_response.content_length().unwrap_or(0);
-    info!(
-        "File size: {:.2} MB",
+
+    println!(
+        "Job {}: File size: {:.2} MB",
+        job_id,
         content_length as f64 / (1024.0 * 1024.0)
     );
 
@@ -222,7 +242,7 @@ async fn stream_csv_to_parquet_multipart(
         let line = match line_result {
             Ok(line) => line,
             Err(e) => {
-                error!("Error reading line: {}", e);
+                error!("Job {}: Error reading line: {}", job_id, e);
                 continue;
             }
         };
@@ -241,14 +261,15 @@ async fn stream_csv_to_parquet_multipart(
                         header_indices.insert(header.clone(), idx);
                     }
                     headers = Some(parsed_headers);
-                    info!(
-                        "Headers parsed: {} columns",
+                    println!(
+                        "Job {}: Headers parsed: {} columns",
+                        job_id,
                         headers.as_ref().unwrap().len()
                     );
                     continue;
                 }
                 Err(e) => {
-                    error!("Failed to parse headers: {}", e);
+                    error!("Job {}: Failed to parse headers: {}", job_id, e);
                     return Err("Invalid CSV headers".into());
                 }
             }
@@ -281,8 +302,9 @@ async fn stream_csv_to_parquet_multipart(
                         if total_rows % 50_000 == 0 {
                             let elapsed = start_time.elapsed().as_secs_f64();
                             let throughput = (total_rows as f64 / elapsed) / 1000.0;
-                            info!(
-                                "Processed {} rows in {:.2}s, batch: {:.2}s, {:.1}K rows/s",
+                            println!(
+                                "Job {}: Processed {} rows in {:.2}s, batch: {:.2}s, {:.1}K rows/s",
+                                job_id,
                                 total_rows,
                                 elapsed,
                                 batch_start.elapsed().as_secs_f64(),
@@ -294,7 +316,12 @@ async fn stream_csv_to_parquet_multipart(
                     }
                 }
                 Err(e) => {
-                    warn!("Failed to parse row {}: {}", total_rows + 1, e);
+                    warn!(
+                        "Job {}: Failed to parse row {}: {}",
+                        job_id,
+                        total_rows + 1,
+                        e
+                    );
                     continue;
                 }
             }
@@ -305,12 +332,17 @@ async fn stream_csv_to_parquet_multipart(
     if !batch_rows.is_empty() {
         let batch = create_record_batch_efficient(&batch_rows, column_definitions, schema.clone())?;
         writer.write(&batch)?;
-        info!("Wrote final batch: {} rows", batch_rows.len());
+        println!(
+            "Job {}: Wrote final batch: {} rows",
+            job_id,
+            batch_rows.len()
+        );
     }
 
     let total_time = start_time.elapsed().as_secs_f64();
-    info!(
-        "Total rows processed: {}, total time: {:.2}s, avg: {:.1}K rows/s",
+    println!(
+        "Job {}: Total rows processed: {}, total time: {:.2}s, avg: {:.1}K rows/s",
+        job_id,
         total_rows,
         total_time,
         (total_rows as f64 / total_time) / 1000.0
@@ -319,7 +351,7 @@ async fn stream_csv_to_parquet_multipart(
     writer.close()?;
 
     // Upload the parquet file
-    upload_to_s3(bucket, output_key, buffer).await?;
+    upload_to_s3(bucket, output_key, buffer, job_id).await?;
 
     Ok(())
 }
@@ -479,7 +511,6 @@ fn create_arrays_from_rows_efficient(
     arrays
 }
 
-// Keep all the parsing functions (parse_boolean, parse_date_to_days, etc.) as they are...
 fn parse_boolean(s: &str) -> Option<bool> {
     match s.to_lowercase().trim() {
         "true" | "1" | "yes" | "y" | "t" => Some(true),
@@ -640,12 +671,18 @@ fn parse_iso_datetime(datetime_str: &str) -> Option<i64> {
     Some(total_seconds * 1_000_000_000 + nanos as i64)
 }
 
-async fn upload_to_s3(bucket: &str, key: &str, parquet_data: Vec<u8>) -> Result<(), Error> {
+async fn upload_to_s3(
+    bucket: &str,
+    key: &str,
+    parquet_data: Vec<u8>,
+    job_id: &str,
+) -> Result<(), Error> {
     let config = aws_config::load_from_env().await;
     let s3_client = S3Client::new(&config);
 
-    info!(
-        "Uploading parquet to S3: bucket={}, key={}, size={:.2} MB",
+    println!(
+        "Job {}: Uploading parquet to S3: bucket={}, key={}, size={:.2} MB",
+        job_id,
         bucket,
         key,
         parquet_data.len() as f64 / (1024.0 * 1024.0)
@@ -660,6 +697,49 @@ async fn upload_to_s3(bucket: &str, key: &str, parquet_data: Vec<u8>) -> Result<
         .send()
         .await?;
 
-    info!("Successfully uploaded parquet file");
+    println!("Job {}: Successfully uploaded parquet file", job_id);
     Ok(())
+}
+
+async fn update_job_status_to_success(
+    table_name: &str,
+    job_id: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let config = aws_config::load_from_env().await;
+    let dynamodb_client = DynamoDbClient::new(&config);
+
+    let pk = format!("JOB-{}", job_id);
+
+    println!("Job {}: Updating DynamoDB status to success", job_id);
+
+    let result = dynamodb_client
+        .update_item()
+        .table_name(table_name)
+        .key("service", aws_sdk_dynamodb::types::AttributeValue::S(pk))
+        .key(
+            "serviceId",
+            aws_sdk_dynamodb::types::AttributeValue::S(job_id.to_string()),
+        )
+        .update_expression("SET #status = :status")
+        .expression_attribute_names("#status", "status")
+        .expression_attribute_values(
+            ":status",
+            aws_sdk_dynamodb::types::AttributeValue::S("success".to_string()),
+        )
+        .send()
+        .await;
+
+    match result {
+        Ok(_) => {
+            println!(
+                "Job {}: Successfully updated DynamoDB status to success",
+                job_id
+            );
+            Ok(())
+        }
+        Err(e) => {
+            error!("Job {}: Failed to update DynamoDB status: {}", job_id, e);
+            Err(format!("DynamoDB update failed: {}", e).into())
+        }
+    }
 }

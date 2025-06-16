@@ -17,7 +17,8 @@
 	let headerError = $state('');
 
 	const presignedUrl = data.env.PRESIGNED_URL;
-	const key = data.env.KEY;
+	const key = data.env.key;
+	const job_id = data.env.job_id!;
 
 	// Available data types for columns
 	const dataTypes = [
@@ -243,13 +244,13 @@
 			uploadStatus = `Upload successful! Processing ${includedHeaders.length} columns.`;
 			uploadProgress = 100;
 
-			const response = await parseCsvToParquet(data.env.CORE_API_URL, typeSchema, key);
+			const response = await parseCsvToParquet(data.env.CORE_API_URL, typeSchema, key, job_id);
 
 			if (response.statusCode !== 200) {
 				console.log('failed');
 			} else {
 				console.log(response.parquet_key);
-				await goto(`/chat?key=${response.parquet_key}`);
+				await goto(`/chat?id=${job_id}`);
 			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Upload failed';
