@@ -30,6 +30,9 @@ polars-sql = "0.46"
 rayon = "1.10.0"
 futures = "0.3.31"
 tokio-util = { version = "0.7", features = ["io"] }
+aws-sdk-sqs = "1.73.0"
+aws-sdk-dynamodb = "1.80.0"
+chrono = "0.4.41"
 
 
 
@@ -43,6 +46,14 @@ name = "parquet-creation"
 path = "src/backend/csv/parquet-creation/index.rs"
 
 [[bin]]
+name = "parquet-creation-processor"
+path = "src/backend/csv/parquet-creation-processor/index.rs"
+
+[[bin]]
 name = "generate-parquet-query"
 path = "src/backend/parquet/generate-query/index.rs"
+
+[[bin]]
+name = "poll-parquet-status"
+path = "src/backend/parquet/poller/index.rs"
 

@@ -5,6 +5,10 @@
 
 declare module "sst" {
   export interface Resource {
+    "createParquetProcessor": {
+      "name": string
+      "type": "sst.aws.Function"
+    }
     "csvUpload": {
       "name": string
       "type": "sst.aws.Bucket"
@@ -21,9 +25,9 @@ declare module "sst" {
       "type": "sst.aws.SvelteKit"
       "url": string
     }
-    "tempAuth": {
-      "name": string
-      "type": "sst.aws.Dynamo"
+    "parqueCreationProcessorQueue": {
+      "type": "sst.aws.Queue"
+      "url": string
     }
   }
 }

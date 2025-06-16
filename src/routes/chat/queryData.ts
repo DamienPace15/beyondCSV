@@ -21,3 +21,23 @@ export async function generateResponseFromMessage(
 
 	return { statusCode: response.status, response_message };
 }
+
+export async function pollStatus(
+	CORE_API_URL: string,
+	job_id: string
+): Promise<{ statusCode: number; parquet_complete: boolean }> {
+	const response = await fetch(`${CORE_API_URL}/poll-parquet-status/${job_id}`, {
+		method: 'GET',
+		headers: {
+			'Content-Type': 'application/json'
+		}
+	});
+
+	const body = await response.json();
+
+	console.log(JSON.stringify(body));
+
+	const parquet_complete = body.parquet_complete;
+
+	return { statusCode: response.status, parquet_complete };
+}
