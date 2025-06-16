@@ -1,3 +1,4 @@
+import test from 'node:test';
 import { dynamoTable } from './dynamo';
 import { s3Bucket } from './storage';
 
@@ -19,10 +20,50 @@ export const apiGateway = new sst.aws.ApiGatewayV2('easyCSV', {
 	}
 });
 
-const parquetQueue = new sst.aws.Queue('parqueCreationProcessorQueue', {
+export const testGateway = new sst.aws.ApiGatewayV1('test', {
+	accessLog: { retention: '1 week' },
+	endpoint: { type: 'regional' },
+	transform: {
+		route: { args: { transform: { integration: { timeoutMilliseconds: 120000 } } } },
+		api: {
+			name: `${$app.stage}-test-api`
+		}
+	},
+	cors: true
+});
+
+const parquetQueue = new sst.aws.Queue(`parqueCreationProcessorQueue`, {
 	visibilityTimeout: '500 seconds',
 	transform: {
-		queue: { name: `${$app.name}-parque-creation-processor`, receiveWaitTimeSeconds: 20 }
+		queue: { name: `${$app.stage}-parque-creation-processor`, receiveWaitTimeSeconds: 20 }
+	}
+});
+
+testGateway.route('POST /parquet-creation', {
+	handler: './.parquet-creation',
+	runtime: 'rust',
+	memory: '128 MB',
+	logging: { logGroup: `${$app.stage}-create-test-parquet` },
+	environment: {
+		DYNAMODB_NAME: dynamoTable.name,
+		PARQUET_QUEUE_URL: parquetQueue.url
+	},
+	permissions: [
+		{
+			actions: ['dynamodb:PutItem'],
+			effect: 'allow',
+			resources: [dynamoTable.arn]
+		},
+		{
+			actions: ['sqs:SendMessage'],
+			effect: 'allow',
+			resources: [parquetQueue.arn]
+		}
+	],
+	transform: {
+		function: {
+			name: `${$app.stage}-create-test-parquet`
+		}
 	}
 });
 
@@ -54,7 +95,7 @@ apiGateway.route('POST /parquet-creation', {
 	}
 });
 
-const parquetProcessorLambda = new sst.aws.Function('createParquetProcessor', {
+const parquetProcessorLambda = new sst.aws.Function(`createParquetProcessor`, {
 	handler: './.parquet-creation-processor',
 	runtime: 'rust',
 	memory: '3008 MB',
