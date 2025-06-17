@@ -1,12 +1,12 @@
 use aws_config::BehaviorVersion;
 use aws_lambda_events::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
-use aws_sdk_dynamodb::types::AttributeValue;
-use aws_sdk_dynamodb::{Client as DynamoClient, Error as DynamoError};
+use aws_sdk_dynamodb::Client as DynamoClient;
 use aws_sdk_sqs::Client as SqsClient;
 use common::cors::create_cors_response;
+use common::parquet_creation::put_job_status;
 use lambda_runtime::{Error, LambdaEvent, service_fn};
 use serde_json::json;
-use std::{collections::HashMap, env};
+use std::env;
 
 #[derive(serde::Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -85,33 +85,4 @@ async fn handler(
             .to_string(),
         ),
     ))
-}
-
-async fn put_job_status(
-    dynamo_client: &DynamoClient,
-    table_name: &str,
-    service: &str,
-    service_id: &str,
-    status: &str,
-) -> Result<(), DynamoError> {
-    let mut item = HashMap::new();
-
-    item.insert(
-        "service".to_string(),
-        AttributeValue::S(service.to_string()),
-    );
-    item.insert(
-        "serviceId".to_string(),
-        AttributeValue::S(service_id.to_string()),
-    );
-    item.insert("status".to_string(), AttributeValue::S(status.to_string()));
-
-    dynamo_client
-        .put_item()
-        .table_name(table_name)
-        .set_item(Some(item))
-        .send()
-        .await?;
-
-    Ok(())
 }

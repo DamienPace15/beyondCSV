@@ -4,15 +4,18 @@ use common::cors::create_cors_response;
 use lambda_runtime::{Error, LambdaEvent, run, service_fn};
 use serde_json::json;
 
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    run(service_fn(function_handler)).await
+}
+
 async fn function_handler(
     event: LambdaEvent<ApiGatewayProxyRequest>,
 ) -> Result<ApiGatewayProxyResponse, Error> {
-    // Handle OPTIONS requests for CORS preflight
     if event.payload.http_method == "OPTIONS" {
         return Ok(create_cors_response(200, None));
     }
 
-    // Extract job_id from path parameters
     let job_id = match event.payload.path_parameters.get("job_id") {
         Some(id) => id,
         None => {
@@ -30,8 +33,6 @@ async fn function_handler(
 
     let pk = format!("JOB-{}", job_id);
     let sk = job_id.clone();
-
-    println!("what is the job id? {:?}", pk);
 
     let result = client
         .get_item()
@@ -95,9 +96,4 @@ async fn function_handler(
             ))
         }
     }
-}
-
-#[tokio::main]
-async fn main() -> Result<(), Error> {
-    run(service_fn(function_handler)).await
 }

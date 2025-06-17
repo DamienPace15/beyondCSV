@@ -2,11 +2,13 @@ use aws_config::BehaviorVersion;
 use aws_lambda_events::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
 use aws_sdk_bedrockruntime::{
     Client as BedrockClient,
-    operation::converse::ConverseOutput,
     types::{ContentBlock, ConversationRole, Message, SystemContentBlock},
 };
 use aws_sdk_s3::Client as S3Client;
-use common::cors::create_cors_response;
+use common::{
+    cors::create_cors_response,
+    parquet_query::{get_converse_output_text, stream_parquet_from_s3},
+};
 use lambda_runtime::{Error, LambdaEvent, service_fn};
 use polars::prelude::*;
 use polars_sql::SQLContext;
@@ -18,7 +20,6 @@ use std::io::Cursor;
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::WARN)
         .with_target(false)
         .without_time()
         .init();
@@ -127,7 +128,6 @@ async fn handler(
         .map(|(name, dtype)| format!("  {}: {:?}", name, dtype))
         .collect::<Vec<_>>()
         .join("\n");
-    println!("Schema:\n{}", schema_string);
 
     let sdk_config = aws_config::defaults(BehaviorVersion::latest())
         .region("ap-southeast-2")
@@ -245,8 +245,6 @@ async fn handler(
         }
     };
 
-    println!("{:?}", output);
-
     let mut ctx = SQLContext::new();
 
     // Register the LazyFrame with a table name
@@ -360,46 +358,9 @@ async fn handler(
         }
     };
 
-    println!("{:?}", readable_output);
-
     let response_body = json!({
         "response_message": readable_output
     });
 
     Ok(create_cors_response(200, Some(response_body.to_string())))
-}
-
-async fn stream_parquet_from_s3(
-    s3_client: &S3Client,
-    bucket: &str,
-    key: &str,
-) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
-    // Stream from S3 directly into memory
-    let response = s3_client
-        .get_object()
-        .bucket(bucket)
-        .key(key)
-        .send()
-        .await?;
-
-    // Collect the bytes into a Vec<u8>
-    let data = response.body.collect().await?;
-    let bytes = data.into_bytes().to_vec();
-
-    Ok(bytes)
-}
-
-fn get_converse_output_text(output: ConverseOutput) -> Result<String, Error> {
-    let text = output
-        .output()
-        .ok_or("no output")?
-        .as_message()
-        .map_err(|_| "output not a message")?
-        .content()
-        .first()
-        .ok_or("no content in message")?
-        .as_text()
-        .map_err(|_| "content is not text")?
-        .to_string();
-    Ok(text)
 }
