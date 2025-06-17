@@ -1,12 +1,9 @@
 use aws_config::BehaviorVersion;
-use aws_lambda_events::{
-    apigw::{ApiGatewayV2httpRequest, ApiGatewayV2httpResponse},
-    encodings::Body,
-    http::HeaderMap,
-};
+use aws_lambda_events::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
 use aws_sdk_dynamodb::types::AttributeValue;
 use aws_sdk_dynamodb::{Client as DynamoClient, Error as DynamoError};
 use aws_sdk_sqs::Client as SqsClient;
+use common::cors::create_cors_response;
 use lambda_runtime::{Error, LambdaEvent, service_fn};
 use serde_json::json;
 use std::{collections::HashMap, env};
@@ -41,8 +38,13 @@ async fn main() -> Result<(), Error> {
 }
 
 async fn handler(
-    event: LambdaEvent<ApiGatewayV2httpRequest>,
-) -> Result<ApiGatewayV2httpResponse, Error> {
+    event: LambdaEvent<ApiGatewayProxyRequest>,
+) -> Result<ApiGatewayProxyResponse, Error> {
+    // Handle OPTIONS requests for CORS preflight
+    if event.payload.http_method == "OPTIONS" {
+        return Ok(create_cors_response(200, None));
+    }
+
     let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
 
     let dynamo_name = env::var("DYNAMODB_NAME")?;
@@ -74,22 +76,15 @@ async fn handler(
     )
     .await?;
 
-    let mut headers = HeaderMap::new();
-    headers.insert("Content-Type", "application/json".parse().unwrap());
-
-    Ok(ApiGatewayV2httpResponse {
-        status_code: 200,
-        headers,
-        multi_value_headers: HeaderMap::new(),
-        body: Some(Body::Text(
+    Ok(create_cors_response(
+        200,
+        Some(
             json!({
                 "job_id": request.job_id
             })
             .to_string(),
-        )),
-        is_base64_encoded: false,
-        cookies: vec![],
-    })
+        ),
+    ))
 }
 
 async fn put_job_status(

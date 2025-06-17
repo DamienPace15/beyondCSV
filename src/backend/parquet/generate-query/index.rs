@@ -1,15 +1,12 @@
 use aws_config::BehaviorVersion;
-use aws_lambda_events::{
-    apigw::{ApiGatewayV2httpRequest, ApiGatewayV2httpResponse},
-    encodings::Body,
-    http::HeaderMap,
-};
+use aws_lambda_events::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
 use aws_sdk_bedrockruntime::{
     Client as BedrockClient,
     operation::converse::ConverseOutput,
     types::{ContentBlock, ConversationRole, Message, SystemContentBlock},
 };
 use aws_sdk_s3::Client as S3Client;
+use common::cors::create_cors_response;
 use lambda_runtime::{Error, LambdaEvent, service_fn};
 use polars::prelude::*;
 use polars_sql::SQLContext;
@@ -39,16 +36,31 @@ struct GenerateParquetQuery {
 }
 
 async fn handler(
-    event: LambdaEvent<ApiGatewayV2httpRequest>,
-) -> Result<ApiGatewayV2httpResponse, Error> {
+    event: LambdaEvent<ApiGatewayProxyRequest>,
+) -> Result<ApiGatewayProxyResponse, Error> {
+    // Handle OPTIONS requests for CORS preflight
+    if event.payload.http_method == "OPTIONS" {
+        return Ok(create_cors_response(200, None));
+    }
+
     let body = event.payload.body.unwrap_or_default();
     let bucket_name = env::var("S3_UPLOAD_BUCKET_NAME")?;
 
-    let request: GenerateParquetQuery = serde_json::from_str(&body)
-        .map_err(|e| lambda_runtime::Error::from(format!("Failed to parse JSON: {}", e)))?;
-
-    let mut headers = HeaderMap::new();
-    headers.insert("Content-Type", "application/json".parse().unwrap());
+    let request: GenerateParquetQuery = match serde_json::from_str(&body) {
+        Ok(req) => req,
+        Err(e) => {
+            return Ok(create_cors_response(
+                400,
+                Some(
+                    json!({
+                        "error": "Failed to parse JSON",
+                        "details": format!("{}", e)
+                    })
+                    .to_string(),
+                ),
+            ));
+        }
+    };
 
     // Initialize S3 client
     let config = aws_config::load_from_env().await;
@@ -56,15 +68,58 @@ async fn handler(
 
     // Stream parquet data directly into memory
     let parquet_bytes =
-        stream_parquet_from_s3(&s3_client, &bucket_name, &request.parquet_key).await?;
+        match stream_parquet_from_s3(&s3_client, &bucket_name, &request.parquet_key).await {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                return Ok(create_cors_response(
+                    500,
+                    Some(
+                        json!({
+                            "error": "Failed to read parquet file from S3",
+                            "details": format!("{}", e)
+                        })
+                        .to_string(),
+                    ),
+                ));
+            }
+        };
 
     // Create LazyFrame from in-memory bytes
-    let cursor = Cursor::new(parquet_bytes);
-    let df = ParquetReader::new(cursor).finish()?;
+    let df = match ParquetReader::new(Cursor::new(parquet_bytes)).finish() {
+        Ok(df) => df,
+        Err(e) => {
+            return Ok(create_cors_response(
+                500,
+                Some(
+                    json!({
+                        "error": "Failed to read parquet data",
+                        "details": format!("{}", e)
+                    })
+                    .to_string(),
+                ),
+            ));
+        }
+    };
+
     let lf = df.lazy();
 
     // Get schema from the first row
-    let collected_rows: DataFrame = lf.clone().limit(1).collect()?;
+    let collected_rows: DataFrame = match lf.clone().limit(1).collect() {
+        Ok(df) => df,
+        Err(e) => {
+            return Ok(create_cors_response(
+                500,
+                Some(
+                    json!({
+                        "error": "Failed to collect schema data",
+                        "details": format!("{}", e)
+                    })
+                    .to_string(),
+                ),
+            ));
+        }
+    };
+
     let schema = collected_rows.schema();
 
     let schema_string = schema
@@ -160,26 +215,33 @@ async fn handler(
         .await;
 
     let output: String = match bedrock_response {
-        Ok(output) => {
-            let text = get_converse_output_text(output)?;
-            text
-        }
+        Ok(output) => match get_converse_output_text(output) {
+            Ok(text) => text,
+            Err(e) => {
+                return Ok(create_cors_response(
+                    500,
+                    Some(
+                        json!({
+                            "error": "Failed to extract text from Bedrock response",
+                            "details": format!("{}", e)
+                        })
+                        .to_string(),
+                    ),
+                ));
+            }
+        },
         Err(e) => {
             eprintln!("Bedrock converse error: {:?}", e);
-            return Ok(ApiGatewayV2httpResponse {
-                status_code: 500,
-                headers,
-                multi_value_headers: HeaderMap::new(),
-                body: Some(Body::Text(
+            return Ok(create_cors_response(
+                500,
+                Some(
                     json!({
                         "error": "Failed to generate SQL query",
                         "details": format!("Bedrock API error: {}", e)
                     })
                     .to_string(),
-                )),
-                is_base64_encoded: false,
-                cookies: vec![],
-            });
+                ),
+            ));
         }
     };
 
@@ -190,8 +252,36 @@ async fn handler(
     // Register the LazyFrame with a table name
     ctx.register("data", lf.clone());
 
-    // Execute the SQL query (assuming 'output' contains your SQL string)
-    let result_df = ctx.execute(&output)?.collect()?;
+    // Execute the SQL query
+    let result_df = match ctx.execute(&output) {
+        Ok(lazy_frame) => match lazy_frame.collect() {
+            Ok(df) => df,
+            Err(e) => {
+                return Ok(create_cors_response(
+                    500,
+                    Some(
+                        json!({
+                            "error": "Failed to collect SQL query results",
+                            "details": format!("{}", e)
+                        })
+                        .to_string(),
+                    ),
+                ));
+            }
+        },
+        Err(e) => {
+            return Ok(create_cors_response(
+                500,
+                Some(
+                    json!({
+                        "error": "Failed to execute SQL query",
+                        "details": format!("{}", e)
+                    })
+                    .to_string(),
+                ),
+            ));
+        }
+    };
 
     let column_names: Vec<&PlSmallStr> = result_df.get_column_names();
     let mut rows = Vec::new();
@@ -214,7 +304,21 @@ async fn handler(
         "data": rows
     });
 
-    let json_data = serde_json::to_string_pretty(&structured_data)?;
+    let json_data = match serde_json::to_string_pretty(&structured_data) {
+        Ok(data) => data,
+        Err(e) => {
+            return Ok(create_cors_response(
+                500,
+                Some(
+                    json!({
+                        "error": "Failed to serialize query results",
+                        "details": format!("{}", e)
+                    })
+                    .to_string(),
+                ),
+            ));
+        }
+    };
 
     const MAKE_HUMAN_READABLE: &str = r#"You will be given some data extraced from a parquet file, make the data nice and presentable to an end user
     ensure that you are only returning things related to the data, I do not need a reason why you did it the way you did.
@@ -245,12 +349,14 @@ async fn handler(
         .await;
 
     let readable_output: String = match make_human_presentable {
-        Ok(read_output) => {
-            let text = get_converse_output_text(read_output)?;
-            text
-        }
+        Ok(read_output) => match get_converse_output_text(read_output) {
+            Ok(text) => text,
+            Err(e) => {
+                format!("Failed to extract readable output: {}", e)
+            }
+        },
         Err(e) => {
-            format!("Bedrock make readable error: {:?}", e)
+            format!("Bedrock make readable error: {}", e)
         }
     };
 
@@ -260,14 +366,7 @@ async fn handler(
         "response_message": readable_output
     });
 
-    Ok(ApiGatewayV2httpResponse {
-        status_code: 200,
-        headers,
-        multi_value_headers: HeaderMap::new(),
-        body: Some(Body::Text(response_body.to_string())),
-        is_base64_encoded: false,
-        cookies: vec![],
-    })
+    Ok(create_cors_response(200, Some(response_body.to_string())))
 }
 
 async fn stream_parquet_from_s3(

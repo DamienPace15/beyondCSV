@@ -17,16 +17,16 @@ declare module "sst" {
       "name": string
       "type": "sst.aws.Dynamo"
     }
-    "easyCSV": {
-      "type": "sst.aws.ApiGatewayV2"
-      "url": string
-    }
     "easyCSVFe": {
       "type": "sst.aws.SvelteKit"
       "url": string
     }
     "parqueCreationProcessorQueue": {
       "type": "sst.aws.Queue"
+      "url": string
+    }
+    "regionalRestAPI": {
+      "type": "sst.aws.ApiGatewayV1"
       "url": string
     }
   }

@@ -5,7 +5,6 @@ use lambda_runtime::{Error, LambdaEvent, service_fn};
 use std::env;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tracing::{error, warn};
-use uuid::Uuid;
 
 use arrow::array::{
     ArrayRef, BooleanArray, Date32Array, Float64Array, Int64Array, StringArray,
@@ -137,7 +136,7 @@ async fn process_sqs_message(
     let start_time = std::time::Instant::now();
 
     // Use job_id in the parquet filename for better traceability
-    let parquet_key = format!("parquet/{}-{}.parquet", request.job_id, Uuid::new_v4());
+    let parquet_key = format!("parquet/{}.parquet", request.job_id);
 
     stream_csv_to_parquet_multipart(
         bucket_name,

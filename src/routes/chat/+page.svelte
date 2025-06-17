@@ -46,8 +46,6 @@
 	let pollingInterval: number | null = null;
 	let key: string | null = null; // You'll need to get this from somewhere
 
-	console.log(isParquetReady);
-
 	// Auto-scroll to bottom when new messages are added
 	$effect(() => {
 		if (chatContainer && messages.length > 0) {
@@ -206,14 +204,10 @@
 	}
 
 	async function generateResponse(userMessage: string): Promise<string> {
-		if (!key) {
-			throw new Error('No key provided');
-		}
-
 		const responses: ApiResponse = await generateResponseFromMessage(
 			data.env.CORE_API_URL!,
 			userMessage,
-			key
+			`parquet/${job_id}.parquet`
 		);
 
 		return responses.response_message;
