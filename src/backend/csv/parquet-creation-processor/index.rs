@@ -5,7 +5,6 @@ use lambda_runtime::{Error, LambdaEvent, service_fn};
 use std::env;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tracing::{error, warn};
-use uuid::Uuid;
 
 use arrow::array::{
     ArrayRef, BooleanArray, Date32Array, Float64Array, Int64Array, StringArray,

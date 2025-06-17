@@ -1,20 +1,25 @@
-use aws_lambda_events::{
-    encodings::Body,
-    event::apigw::{ApiGatewayV2httpRequest, ApiGatewayV2httpResponse},
-    http::HeaderMap,
-};
+use aws_lambda_events::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
 use aws_sdk_dynamodb::Client;
+use common::cors::create_cors_response;
 use lambda_runtime::{Error, LambdaEvent, run, service_fn};
 use serde_json::json;
 
 async fn function_handler(
-    event: LambdaEvent<ApiGatewayV2httpRequest>,
-) -> Result<ApiGatewayV2httpResponse, Error> {
+    event: LambdaEvent<ApiGatewayProxyRequest>,
+) -> Result<ApiGatewayProxyResponse, Error> {
+    // Handle OPTIONS requests for CORS preflight
+    if event.payload.http_method == "OPTIONS" {
+        return Ok(create_cors_response(200, None));
+    }
+
     // Extract job_id from path parameters
     let job_id = match event.payload.path_parameters.get("job_id") {
         Some(id) => id,
         None => {
-            return Ok(create_error_response(400, "Missing job_id in path"));
+            return Ok(create_cors_response(
+                400,
+                Some(json!({"error": "Missing job_id in path"}).to_string()),
+            ));
         }
     };
 
@@ -46,9 +51,12 @@ async fn function_handler(
                             status_value.as_str()
                         }
                         _ => {
-                            return Ok(create_error_response(
+                            return Ok(create_cors_response(
                                 500,
-                                "Status field not found or invalid type",
+                                Some(
+                                    json!({"error": "Status field not found or invalid type"})
+                                        .to_string(),
+                                ),
                             ));
                         }
                     };
@@ -58,7 +66,10 @@ async fn function_handler(
                         "success" => true,
                         "pending" => false,
                         _ => {
-                            return Ok(create_error_response(400, "Invalid status value"));
+                            return Ok(create_cors_response(
+                                400,
+                                Some(json!({"error": "Invalid status value"}).to_string()),
+                            ));
                         }
                     };
 
@@ -68,39 +79,21 @@ async fn function_handler(
                         "parquet_complete": parquet_complete
                     });
 
-                    let mut headers = HeaderMap::new();
-                    headers.insert("Content-Type", "application/json".parse().unwrap());
-
-                    Ok(ApiGatewayV2httpResponse {
-                        status_code: 200,
-                        headers,
-                        body: Some(Body::Text(response_body.to_string())), // Convert to String
-                        is_base64_encoded: false,
-                        multi_value_headers: HeaderMap::new(),
-                        cookies: vec![],
-                    })
+                    Ok(create_cors_response(200, Some(response_body.to_string())))
                 }
-                None => Ok(create_error_response(404, "Job not found")),
+                None => Ok(create_cors_response(
+                    404,
+                    Some(json!({"error": "Job not found"}).to_string()),
+                )),
             }
         }
         Err(e) => {
             eprintln!("DynamoDB error: {:?}", e);
-            Ok(create_error_response(500, "Internal server error"))
+            Ok(create_cors_response(
+                500,
+                Some(json!({"error": "Internal server error"}).to_string()),
+            ))
         }
-    }
-}
-
-fn create_error_response(status_code: i64, message: &str) -> ApiGatewayV2httpResponse {
-    let mut headers = HeaderMap::new();
-    headers.insert("Content-Type", "application/json".parse().unwrap());
-
-    ApiGatewayV2httpResponse {
-        status_code,
-        headers,
-        body: Some(Body::Text(json!({"error": message}).to_string())), // Convert to String
-        is_base64_encoded: false,
-        cookies: vec![],
-        multi_value_headers: HeaderMap::new(),
     }
 }
 

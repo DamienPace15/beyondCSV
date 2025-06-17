@@ -17,10 +17,6 @@ declare module "sst" {
       "name": string
       "type": "sst.aws.Dynamo"
     }
-    "easyCSV": {
-      "type": "sst.aws.ApiGatewayV2"
-      "url": string
-    }
     "easyCSVFe": {
       "type": "sst.aws.SvelteKit"
       "url": string
@@ -29,7 +25,7 @@ declare module "sst" {
       "type": "sst.aws.Queue"
       "url": string
     }
-    "test": {
+    "regionalRestAPI": {
       "type": "sst.aws.ApiGatewayV1"
       "url": string
     }
