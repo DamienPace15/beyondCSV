@@ -1,4 +1,9 @@
 pub mod cors;
+pub mod creation_parsing;
+pub mod creation_types;
+pub mod dynamo;
 pub mod parquet_creation;
 pub mod parquet_creation_processor;
 pub mod parquet_query;
+pub mod s3;
+pub mod test_creation_processor;

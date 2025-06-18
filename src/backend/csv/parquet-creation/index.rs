@@ -8,18 +8,6 @@ use lambda_runtime::{Error, LambdaEvent, service_fn};
 use serde_json::json;
 use std::env;
 
-#[derive(serde::Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "lowercase")]
-enum DataType {
-    String,
-    Integer,
-    Float,
-    Boolean,
-    Date,
-    DateTime,
-    Timestamp,
-}
-
 #[derive(serde::Deserialize, Debug)]
 struct ParquetCreationRequest {
     job_id: String,
