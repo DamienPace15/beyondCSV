@@ -62,7 +62,7 @@ apiGateway.route('POST /parquet-creation', {
 	],
 	transform: {
 		function: {
-			name: `${$app.stage}-create-test-parquet`
+			name: `${$app.stage}-create-parquet`
 		}
 	}
 });
@@ -103,7 +103,7 @@ parquetQueue.subscribe(parquetProcessorLambda.arn);
 apiGateway.route('POST /generate-parquet-query', {
 	handler: './.generate-parquet-query',
 	runtime: 'rust',
-	memory: '1028 MB',
+	memory: '2000 MB',
 	timeout: '500 seconds',
 	logging: { logGroup: `${$app.stage}-generate-parquet-query` },
 	environment: { S3_UPLOAD_BUCKET_NAME: s3Bucket.name },
@@ -149,3 +149,29 @@ apiGateway.route('GET /poll-parquet-status/{job_id}', {
 });
 
 apiGateway.deploy();
+
+const testProcessor = new sst.aws.Function(`test`, {
+	handler: './.test-processor',
+	runtime: 'rust',
+	memory: '3008 MB',
+	timeout: '500 seconds',
+	logging: { logGroup: `${$app.stage}-test-parquet-processor` },
+	environment: { S3_UPLOAD_BUCKET_NAME: s3Bucket.name, DYNAMODB_NAME: dynamoTable.name },
+	permissions: [
+		{
+			actions: ['s3:GetObject', 's3:Putobject'],
+			effect: 'allow',
+			resources: [s3Bucket.arn, s3Bucket.arn.apply((arn) => `${arn}/*`)]
+		},
+		{
+			actions: ['dynamodb:UpdateItem'],
+			effect: 'allow',
+			resources: [dynamoTable.arn]
+		}
+	],
+	transform: {
+		function: {
+			name: `${$app.stage}-test-parquet-processor`
+		}
+	}
+});

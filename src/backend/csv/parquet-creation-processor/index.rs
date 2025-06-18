@@ -1,6 +1,7 @@
 use aws_lambda_events::{event::sqs::SqsEvent, sqs::SqsMessage};
-use common::parquet_creation_processor::{
-    ColumnDefinition, stream_csv_to_parquet_multipart, update_job_status_to_success,
+use common::{
+    creation_types::ColumnDefinition, dynamo::update_job_status_to_success,
+    parquet_creation_processor::stream_csv_to_parquet_multipart_threaded,
 };
 use lambda_runtime::{Error, LambdaEvent, service_fn};
 use std::env;
@@ -26,6 +27,7 @@ async fn main() -> Result<(), Error> {
 }
 
 async fn handler(event: LambdaEvent<SqsEvent>) -> Result<(), Error> {
+    println!("{:?}", event);
     let bucket_name = env::var("S3_UPLOAD_BUCKET_NAME")?;
     let table_name = env::var("DYNAMODB_NAME")?;
 
@@ -53,7 +55,7 @@ async fn process_sqs_message(
         .map_err(|e| format!("Failed to parse JSON from SQS message: {}", e))?;
 
     println!(
-        "Processing job {} with {} columns",
+        "Processing job {} with {} columns using multithreaded approach",
         request.job_id,
         request.payload.len()
     );
@@ -62,7 +64,8 @@ async fn process_sqs_message(
 
     let parquet_key = format!("parquet/{}.parquet", request.job_id);
 
-    stream_csv_to_parquet_multipart(
+    // Use the new multithreaded function
+    stream_csv_to_parquet_multipart_threaded(
         bucket_name,
         &request.s3_key,
         &request.payload,
@@ -72,7 +75,7 @@ async fn process_sqs_message(
     .await?;
 
     println!(
-        "Job {} converted to Parquet in {:.2} seconds",
+        "Job {} converted to Parquet using multithreading in {:.2} seconds",
         request.job_id,
         start_time.elapsed().as_secs_f64()
     );

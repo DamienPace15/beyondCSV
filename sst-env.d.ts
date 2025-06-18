@@ -29,6 +29,10 @@ declare module "sst" {
       "type": "sst.aws.ApiGatewayV1"
       "url": string
     }
+    "test": {
+      "name": string
+      "type": "sst.aws.Function"
+    }
   }
 }
 /// <reference path="sst-env.d.ts" />

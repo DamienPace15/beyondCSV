@@ -38,6 +38,7 @@ tokio-util = { version = "0.7", features = ["io"] }
 aws-sdk-sqs = "1.73.0"
 aws-sdk-dynamodb = "1.80.0"
 chrono = "0.4.41"
+csv-async = "1.3.1"
 
 
 
@@ -61,4 +62,8 @@ path = "src/backend/parquet/generate-query/index.rs"
 [[bin]]
 name = "poll-parquet-status"
 path = "src/backend/parquet/poller/index.rs"
+
+[[bin]]
+name = "test-processor"
+path = "src/backend/csv/test-processor/index.rs"
 
