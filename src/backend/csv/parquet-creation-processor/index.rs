@@ -1,7 +1,7 @@
 use aws_lambda_events::{event::sqs::SqsEvent, sqs::SqsMessage};
 use common::{
     creation_types::ColumnDefinition, dynamo::update_job_status_to_success,
-    parquet_creation_processor::stream_csv_to_parquet_multipart_threaded,
+    parquet_creation_processor::stream_csv_to_parquet_optimized,
 };
 use lambda_runtime::{Error, LambdaEvent, service_fn};
 use std::env;
@@ -64,8 +64,7 @@ async fn process_sqs_message(
 
     let parquet_key = format!("parquet/{}.parquet", request.job_id);
 
-    // Use the new multithreaded function
-    stream_csv_to_parquet_multipart_threaded(
+    stream_csv_to_parquet_optimized(
         bucket_name,
         &request.s3_key,
         &request.payload,
