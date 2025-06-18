@@ -109,9 +109,9 @@
 		// Initial poll
 		await poll();
 
-		// Continue polling every 15 seconds if not complete
+		// Continue polling every 5 seconds if not complete
 		if (!isParquetReady && isPolling) {
-			pollingInterval = setInterval(poll, 15000);
+			pollingInterval = setInterval(poll, 5000);
 		}
 	}
 
