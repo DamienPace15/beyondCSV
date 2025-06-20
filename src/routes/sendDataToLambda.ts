@@ -2,15 +2,15 @@ export async function parseCsvToParquet(
 	CORE_API_URL: string,
 	payload: { column: string; type: string }[],
 	s3_key: string,
-	job_id: string
+	job_id: string,
+	context_text: string
 ): Promise<{ statusCode: number; parquet_key: string }> {
-	console.log('WHAT IS S3', s3_key);
 	const response = await fetch(`${CORE_API_URL}/parquet-creation`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json'
 		},
-		body: JSON.stringify({ payload, s3_key, job_id })
+		body: JSON.stringify({ payload, s3_key, job_id, context_text })
 	});
 
 	if (response.status !== 200) {

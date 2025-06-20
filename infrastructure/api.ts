@@ -106,7 +106,7 @@ apiGateway.route('POST /generate-parquet-query', {
 	memory: '2816 MB',
 	timeout: '500 seconds',
 	logging: { logGroup: `${$app.stage}-generate-parquet-query` },
-	environment: { S3_UPLOAD_BUCKET_NAME: s3Bucket.name },
+	environment: { S3_UPLOAD_BUCKET_NAME: s3Bucket.name, DYNAMODB_NAME: dynamoTable.name },
 	permissions: [
 		{
 			actions: ['s3:GetObject'],
@@ -117,6 +117,11 @@ apiGateway.route('POST /generate-parquet-query', {
 			effect: 'allow',
 			actions: ['bedrock:*'],
 			resources: ['*']
+		},
+		{
+			actions: ['dynamodb:GetItem'],
+			effect: 'allow',
+			resources: [dynamoTable.arn]
 		}
 	],
 	transform: {

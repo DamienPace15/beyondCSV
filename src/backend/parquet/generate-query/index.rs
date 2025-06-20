@@ -7,8 +7,9 @@ use aws_sdk_bedrockruntime::{
 use aws_sdk_s3::Client as S3Client;
 use common::{
     cors::create_cors_response,
+    dynamo::get_job_by_id,
     parquet_query::{get_converse_output_text, stream_parquet_from_s3},
-    query_prompts::USER_MESSAGE,
+    query_prompts::{MAKE_HUMAN_READABLE, USER_MESSAGE},
 };
 use lambda_runtime::{Error, LambdaEvent, service_fn};
 use polars::prelude::*;
@@ -36,6 +37,7 @@ async fn main() -> Result<(), Error> {
 struct GenerateParquetQuery {
     message: String,
     parquet_key: String,
+    job_id: String,
 }
 
 async fn handler(
@@ -48,6 +50,7 @@ async fn handler(
 
     let body = event.payload.body.unwrap_or_default();
     let bucket_name = env::var("S3_UPLOAD_BUCKET_NAME")?;
+    let table_name = env::var("DYNAMODB_NAME")?;
 
     let request: GenerateParquetQuery = match serde_json::from_str(&body) {
         Ok(req) => req,
@@ -262,20 +265,7 @@ async fn handler(
         }
     };
 
-    // Make results human-readable
-    const MAKE_HUMAN_READABLE: &str = r#"You will be given some data extraced from a parquet file, make the data nice and presentable to an end user
-    ensure that you are only returning things related to the data, I do not need a reason why you did it the way you did.
-    Only return things related to the data.
-
-    Using the user question and the information from the parquet file return a message that a user will udnerstand.
-
-    E.G if someone asks I want to know the name of the most popular state in Australia, use that message as well as the information gathered to then present a message.
-
-    respond with something that gives them an accurate reply to their message and don't output just the raw data
-    "#;
-
-    println!("{:?}", json_data);
-    println!("{:?}", request.message);
+    let job_record = get_job_by_id(&table_name, &request.job_id).await?.unwrap();
 
     let make_human_presentable = bedrock_client
         .converse()
@@ -285,8 +275,8 @@ async fn handler(
             Message::builder()
                 .role(ConversationRole::User)
                 .content(ContentBlock::Text(format!(
-                    "data that needs to be presentable: {}, user question: {}",
-                    json_data, request.message
+                    "data that needs to be presentable: {}, user question: {}, dataset context: {}",
+                    json_data, request.message, job_record.context
                 )))
                 .build()
                 .unwrap(),

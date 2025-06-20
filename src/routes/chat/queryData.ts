@@ -1,14 +1,15 @@
 export async function generateResponseFromMessage(
 	CORE_API_URL: string,
 	message: string,
-	parquet_key: string
+	parquet_key: string,
+	job_id: string
 ): Promise<{ statusCode: number; response_message: string }> {
 	const response = await fetch(`${CORE_API_URL}/generate-parquet-query`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json'
 		},
-		body: JSON.stringify({ message, parquet_key })
+		body: JSON.stringify({ message, parquet_key, job_id })
 	});
 
 	const body = await response.json();

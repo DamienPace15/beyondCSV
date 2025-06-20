@@ -11,6 +11,7 @@ use std::env;
 #[derive(serde::Deserialize, Debug)]
 struct ParquetCreationRequest {
     job_id: String,
+    context_text: String,
 }
 
 #[tokio::main]
@@ -61,6 +62,7 @@ async fn handler(
         &service,
         &request.job_id,
         "pending",
+        &request.context_text,
     )
     .await?;
 
