@@ -1011,7 +1011,6 @@ dependencies = [
  "polars",
  "polars-sql",
  "rayon",
- "regex",
  "rust_decimal",
  "serde",
  "serde_json",
