@@ -8,6 +8,7 @@ pub async fn put_job_status(
     service: &str,
     service_id: &str,
     status: &str,
+    context: &str,
 ) -> Result<(), DynamoError> {
     let mut item = HashMap::new();
 
@@ -20,6 +21,10 @@ pub async fn put_job_status(
         AttributeValue::S(service_id.to_string()),
     );
     item.insert("status".to_string(), AttributeValue::S(status.to_string()));
+    item.insert(
+        "context".to_string(),
+        AttributeValue::S(context.to_string()),
+    );
 
     dynamo_client
         .put_item()

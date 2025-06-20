@@ -6,6 +6,7 @@
 	import Colums from '../lib/Columns/colums.svelte';
 	import Upload from '../lib/Upload/upload.svelte';
 	import UploadingStatus from '../lib/UploadingStatus/status.svelte';
+	import ContextBox from '../lib/ContextBox/context.svelte';
 
 	let { data }: { data: LayoutData } = $props();
 
@@ -18,6 +19,7 @@
 	let csvHeaders = $state<string[]>([]);
 	let columnTypes = $state<{ [key: string]: string }>({});
 	let excludedColumns = $state<Set<string>>(new Set());
+	let contextText = $state('');
 
 	const presignedUrl = data.env.PRESIGNED_URL;
 	const key = data.env.key;
@@ -56,9 +58,15 @@
 		csvHeaders = [];
 		columnTypes = {};
 		excludedColumns = new Set();
+		contextText = '';
 		error = '';
 		uploadStatus = '';
 		uploadProgress = 0;
+	}
+
+	// Handle context text change
+	function handleContextChange(newContext: string) {
+		contextText = newContext;
 	}
 
 	async function uploadToS3(presignedUrl: string, file: File) {
@@ -120,7 +128,14 @@
 			uploadStatus = `Upload successful! Processing ${includedHeaders.length} columns.`;
 			uploadProgress = 100;
 
-			const response = await parseCsvToParquet(data.env.CORE_API_URL, typeSchema, key, job_id);
+			// Include context in the API call
+			const response = await parseCsvToParquet(
+				data.env.CORE_API_URL,
+				typeSchema,
+				key,
+				job_id,
+				contextText
+			);
 
 			if (response.statusCode !== 200) {
 				console.log('failed');
@@ -187,6 +202,10 @@
 				onColumnTypesChange={handleColumnTypesChange}
 				onExcludedColumnsChange={handleExcludedColumnsChange}
 			/>
+
+			{#if csvHeaders.length > 0}
+				<ContextBox {contextText} onContextChange={handleContextChange} disabled={uploading} />
+			{/if}
 
 			<div class="button-group">
 				<button

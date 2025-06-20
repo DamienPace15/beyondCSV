@@ -204,7 +204,8 @@
 		const responses: ApiResponse = await generateResponseFromMessage(
 			data.env.CORE_API_URL!,
 			userMessage,
-			`parquet/${job_id}.parquet`
+			`parquet/${job_id}.parquet`,
+			job_id
 		);
 
 		return responses.response_message;
