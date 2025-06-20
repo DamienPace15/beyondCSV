@@ -11,11 +11,11 @@ export async function generateResponseFromMessage(
 		body: JSON.stringify({ message, parquet_key })
 	});
 
-	if (response.status !== 200) {
-		throw new Error('wrong');
-	}
-
 	const body = await response.json();
+
+	if (response.status !== 200) {
+		throw new Error(JSON.stringify({ error: body.error, detail: body.detail }));
+	}
 
 	const response_message = body.response_message;
 
