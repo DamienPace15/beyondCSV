@@ -13,8 +13,6 @@ export async function generateResponseFromMessage(
 
 	const body = await response.json();
 
-	console.log(JSON.stringify(body));
-
 	if (response.status !== 200) {
 		throw new Error(JSON.stringify({ error: body.error, detail: body.detail }));
 	}
