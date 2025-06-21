@@ -1,6 +1,7 @@
 pub mod cors;
 pub mod creation_parsing;
 pub mod creation_types;
+pub mod duck_db;
 pub mod dynamo;
 pub mod parquet_creation;
 pub mod parquet_creation_processor;
