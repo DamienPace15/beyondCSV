@@ -103,7 +103,7 @@ parquetQueue.subscribe(parquetProcessorLambda.arn);
 apiGateway.route('POST /generate-parquet-query', {
 	handler: './.generate-parquet-query',
 	runtime: 'rust',
-	memory: '2816 MB',
+	memory: '3008 MB',
 	timeout: '500 seconds',
 	logging: { logGroup: `${$app.stage}-generate-parquet-query` },
 	environment: { S3_UPLOAD_BUCKET_NAME: s3Bucket.name, DYNAMODB_NAME: dynamoTable.name },

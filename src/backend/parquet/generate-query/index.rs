@@ -4,24 +4,26 @@ use aws_sdk_bedrockruntime::{
     Client as BedrockClient,
     types::{ContentBlock, ConversationRole, Message, SystemContentBlock},
 };
+// Add the S3 client and other necessary imports for file handling
 use aws_sdk_s3::Client as S3Client;
 use common::{
     cors::create_cors_response,
+    // Use the renamed DuckDB functions
+    duck_db::{execute_sql_on_parquet_file, get_schema_from_parquet_file, setup_duckdb_connection},
     dynamo::get_job_by_id,
-    parquet_query::{get_converse_output_text, stream_parquet_from_s3},
+    parquet_query::get_converse_output_text,
     query_prompts::{MAKE_HUMAN_READABLE, USER_MESSAGE},
 };
 use lambda_runtime::{Error, LambdaEvent, service_fn};
-use polars::prelude::*;
-use polars_sql::SQLContext;
 use serde::Deserialize;
 use serde_json::json;
 use std::env;
-use std::io::Cursor;
+// Import for writing to the filesystem
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    unsafe { std::env::set_var("POLARS_MAX_THREADS", "2") };
     tracing_subscriber::fmt()
         .with_target(false)
         .without_time()
@@ -43,7 +45,6 @@ struct GenerateParquetQuery {
 async fn handler(
     event: LambdaEvent<ApiGatewayProxyRequest>,
 ) -> Result<ApiGatewayProxyResponse, Error> {
-    // Handle OPTIONS requests for CORS preflight
     if event.payload.http_method == "OPTIONS" {
         return Ok(create_cors_response(200, None));
     }
@@ -58,85 +59,75 @@ async fn handler(
             return Ok(create_cors_response(
                 400,
                 Some(
-                    json!({
-                        "error": "Failed to parse JSON",
-                        "details": format!("{}", e)
-                    })
-                    .to_string(),
+                    json!({"error": "Failed to parse JSON", "details": e.to_string()}).to_string(),
                 ),
             ));
         }
     };
 
-    // Initialize clients
-    let config = aws_config::load_from_env().await;
-    let s3_client = S3Client::new(&config);
+    // Initialize AWS clients for Bedrock and S3
     let sdk_config = aws_config::defaults(BehaviorVersion::latest()).load().await;
     let bedrock_client = BedrockClient::new(&sdk_config);
+    let s3_client = S3Client::new(&sdk_config);
 
-    // OPTIMIZATION 1: Single-pass parquet processing
-    // Stream parquet data directly into memory once
-    let parquet_bytes =
-        match stream_parquet_from_s3(&s3_client, &bucket_name, &request.parquet_key).await {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                return Ok(create_cors_response(
-                    500,
-                    Some(
-                        json!({
-                            "error": "Failed to read parquet file from S3",
-                            "details": format!("{}", e)
-                        })
-                        .to_string(),
-                    ),
-                ));
+    // --- Core Logic Change: Download the file first ---
+    let temp_file_path = format!(
+        "/tmp/{}",
+        request
+            .parquet_key
+            .split('/')
+            .last()
+            .unwrap_or("temp.parquet")
+    );
+    println!(
+        "Downloading S3 object s3://{}/{} to {}",
+        bucket_name, request.parquet_key, temp_file_path
+    );
+
+    match s3_client
+        .get_object()
+        .bucket(&bucket_name)
+        .key(&request.parquet_key)
+        .send()
+        .await
+    {
+        Ok(s3_output) => {
+            let mut byte_stream = s3_output.body;
+            let mut file = File::create(&temp_file_path).await?;
+            while let Some(chunk) = byte_stream.try_next().await? {
+                file.write_all(&chunk).await?;
             }
-        };
+            println!("Successfully downloaded file to {}", temp_file_path);
+        }
+        Err(e) => {
+            eprintln!("Failed to download from S3: {:?}", e);
+            return Ok(create_cors_response(500, Some(json!({"error": "Failed to download Parquet file from S3", "details": e.to_string()}).to_string())));
+        }
+    }
 
-    // OPTIMIZATION 2: Create LazyFrame directly and extract schema without materialization
-    let df = match ParquetReader::new(Cursor::new(parquet_bytes)).finish() {
-        Ok(df) => df,
+    // Setup a standard in-memory DuckDB connection
+    let conn = match setup_duckdb_connection() {
+        Ok(conn) => conn,
         Err(e) => {
             return Ok(create_cors_response(
                 500,
                 Some(
-                    json!({
-                        "error": "Failed to read parquet data",
-                        "details": format!("{}", e)
-                    })
-                    .to_string(),
+                    json!({"error": "Failed to setup DuckDB connection", "details": e.to_string()})
+                        .to_string(),
                 ),
             ));
         }
     };
 
-    // Convert to LazyFrame immediately to avoid keeping DataFrame in memory
-    let mut lf = df.lazy();
-
-    // OPTIMIZATION 3: Get schema from LazyFrame metadata without collecting
-    let schema = match lf.collect_schema() {
+    // Get schema from the now-local Parquet file
+    let schema_string = match get_schema_from_parquet_file(&conn, &temp_file_path) {
         Ok(schema) => schema,
         Err(e) => {
-            return Ok(create_cors_response(
-                500,
-                Some(
-                    json!({
-                        "error": "Failed to collect schema information",
-                        "details": format!("{}", e)
-                    })
-                    .to_string(),
-                ),
-            ));
+            return Ok(create_cors_response(500, Some(json!({"error": "Failed to get schema from local parquet file", "details": e.to_string()}).to_string())));
         }
     };
 
-    let schema_string = schema
-        .iter()
-        .map(|(name, dtype)| format!("  {}: {:?}", name, dtype))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    println!("{:?}", schema_string);
+    println!("Schema: {}", schema_string);
 
     let bedrock_response = bedrock_client
         .converse()
@@ -149,124 +140,34 @@ async fn handler(
                     "schema: {}, question: {}",
                     schema_string, request.message
                 )))
-                .build()
-                .unwrap(),
+                .build()?,
         )
         .send()
         .await;
 
     let sql_query: String = match bedrock_response {
-        Ok(output) => match get_converse_output_text(output) {
-            Ok(text) => text,
-            Err(e) => {
-                return Ok(create_cors_response(
-                    500,
-                    Some(
-                        json!({
-                            "error": "Failed to extract text from Bedrock response",
-                            "details": format!("{}", e)
-                        })
-                        .to_string(),
-                    ),
-                ));
-            }
-        },
+        Ok(output) => get_converse_output_text(output)?,
         Err(e) => {
             eprintln!("Bedrock converse error: {:?}", e);
-            return Ok(create_cors_response(
-                500,
-                Some(
-                    json!({
-                        "error": "Failed to generate SQL query",
-                        "details": format!("Bedrock API error: {}", e)
-                    })
-                    .to_string(),
-                ),
-            ));
+            return Ok(create_cors_response(500, Some(json!({"error": "Failed to generate SQL query", "details": format!("Bedrock API error: {}", e)}).to_string())));
         }
     };
 
-    println!("What is query? {:?}", sql_query);
+    println!("Generated SQL Query: {}", sql_query);
 
-    // OPTIMIZATION 4: Keep everything in lazy evaluation until final collection
-    let mut ctx = SQLContext::new();
-    ctx.register("data", lf);
-
-    // Execute SQL query and collect only once at the very end
-    let result_df = match ctx.execute(&sql_query) {
-        Ok(lazy_frame) => {
-            // CRITICAL: Only materialize the data once here at the final step
-            match lazy_frame.collect() {
-                Ok(df) => df,
-                Err(e) => {
-                    return Ok(create_cors_response(
-                        500,
-                        Some(
-                            json!({
-                                "error": "Failed to collect SQL query results",
-                                "details": format!("{}", e)
-                            })
-                            .to_string(),
-                        ),
-                    ));
-                }
-            }
-        }
-        Err(e) => {
-            return Ok(create_cors_response(
-                500,
-                Some(
-                    json!({
-                        "error": "Failed to execute SQL query",
-                        "details": format!("{}", e)
-                    })
-                    .to_string(),
-                ),
-            ));
-        }
-    };
-
-    println!("{:?}", result_df);
-
-    // OPTIMIZATION 5: Efficient result serialization
-    let column_names: Vec<&PlSmallStr> = result_df.get_column_names();
-    let mut rows = Vec::with_capacity(result_df.height());
-
-    for i in 0..result_df.height() {
-        let mut row = serde_json::Map::with_capacity(column_names.len());
-        for (col_idx, &col_name) in column_names.iter().enumerate() {
-            let column = &result_df.get_columns()[col_idx];
-            let value = column.get(i).unwrap();
-            row.insert(col_name.to_string(), json!(value.to_string()));
-        }
-        rows.push(json!(row));
-    }
-
-    let structured_data = json!({
-        "metadata": {
-            "columns": column_names
-        },
-        "data": rows
-    });
-
-    let json_data = match serde_json::to_string_pretty(&structured_data) {
+    // Execute SQL query on the local parquet data
+    let structured_data = match execute_sql_on_parquet_file(&conn, &temp_file_path, &sql_query) {
         Ok(data) => data,
         Err(e) => {
-            return Ok(create_cors_response(
-                500,
-                Some(
-                    json!({
-                        "error": "Failed to serialize query results",
-                        "details": format!("{}", e)
-                    })
-                    .to_string(),
-                ),
-            ));
+            return Ok(create_cors_response(500, Some(json!({"error": "Failed to execute SQL query on local data", "details": e.to_string()}).to_string())));
         }
     };
 
-    let job_record = get_job_by_id(&table_name, &request.job_id).await?.unwrap();
+    let json_data = serde_json::to_string_pretty(&structured_data)?;
+    println!("{:?}", json_data);
 
+    // The rest of the function remains the same...
+    let job_record = get_job_by_id(&table_name, &request.job_id).await?.unwrap();
     let make_human_presentable = bedrock_client
         .converse()
         .model_id("apac.amazon.nova-pro-v1:0")
@@ -278,29 +179,18 @@ async fn handler(
                     "data that needs to be presentable: {}, user question: {}, dataset context: {}",
                     json_data, request.message, job_record.context
                 )))
-                .build()
-                .unwrap(),
+                .build()?,
         )
         .send()
         .await;
 
-    let readable_output: String = match make_human_presentable {
-        Ok(read_output) => match get_converse_output_text(read_output) {
-            Ok(text) => text,
-            Err(e) => {
-                format!("Failed to extract readable output: {}", e)
-            }
-        },
-        Err(e) => {
-            format!("Bedrock make readable error: {}", e)
-        }
+    let readable_output = match make_human_presentable {
+        Ok(output) => get_converse_output_text(output)?,
+        Err(e) => format!("Bedrock make readable error: {}", e),
     };
 
-    println!("{:?}", readable_output);
+    println!("Human readable output: {}", readable_output);
 
-    let response_body = json!({
-        "response_message": readable_output
-    });
-
+    let response_body = json!({ "response_message": readable_output });
     Ok(create_cors_response(200, Some(response_body.to_string())))
 }
