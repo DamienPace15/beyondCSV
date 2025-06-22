@@ -4,17 +4,23 @@ use aws_sdk_bedrockruntime::{
     Client as BedrockClient,
     types::{ContentBlock, ConversationRole, Message, SystemContentBlock},
 };
+// Add the S3 client and other necessary imports for file handling
+use aws_sdk_s3::Client as S3Client;
 use common::{
     cors::create_cors_response,
-    duck_db::{get_schema_from_parquet, setup_duckdb_connection},
+    // Use the renamed DuckDB functions
+    duck_db::{execute_sql_on_parquet_file, get_schema_from_parquet_file, setup_duckdb_connection},
     dynamo::get_job_by_id,
-    parquet_query::{execute_sql_query, get_converse_output_text},
+    parquet_query::get_converse_output_text,
     query_prompts::{MAKE_HUMAN_READABLE, USER_MESSAGE},
 };
 use lambda_runtime::{Error, LambdaEvent, service_fn};
 use serde::Deserialize;
 use serde_json::json;
 use std::env;
+// Import for writing to the filesystem
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -39,7 +45,6 @@ struct GenerateParquetQuery {
 async fn handler(
     event: LambdaEvent<ApiGatewayProxyRequest>,
 ) -> Result<ApiGatewayProxyResponse, Error> {
-    // Handle OPTIONS requests for CORS preflight
     if event.payload.http_method == "OPTIONS" {
         return Ok(create_cors_response(200, None));
     }
@@ -54,60 +59,76 @@ async fn handler(
             return Ok(create_cors_response(
                 400,
                 Some(
-                    json!({
-                        "error": "Failed to parse JSON",
-                        "details": format!("{}", e)
-                    })
-                    .to_string(),
+                    json!({"error": "Failed to parse JSON", "details": e.to_string()}).to_string(),
                 ),
             ));
         }
     };
 
-    // Initialize clients
+    // Initialize AWS clients for Bedrock and S3
     let sdk_config = aws_config::defaults(BehaviorVersion::latest()).load().await;
     let bedrock_client = BedrockClient::new(&sdk_config);
+    let s3_client = S3Client::new(&sdk_config);
 
-    // Setup DuckDB connection with S3 support
+    // --- Core Logic Change: Download the file first ---
+    let temp_file_path = format!(
+        "/tmp/{}",
+        request
+            .parquet_key
+            .split('/')
+            .last()
+            .unwrap_or("temp.parquet")
+    );
+    println!(
+        "Downloading S3 object s3://{}/{} to {}",
+        bucket_name, request.parquet_key, temp_file_path
+    );
+
+    match s3_client
+        .get_object()
+        .bucket(&bucket_name)
+        .key(&request.parquet_key)
+        .send()
+        .await
+    {
+        Ok(s3_output) => {
+            let mut byte_stream = s3_output.body;
+            let mut file = File::create(&temp_file_path).await?;
+            while let Some(chunk) = byte_stream.try_next().await? {
+                file.write_all(&chunk).await?;
+            }
+            println!("Successfully downloaded file to {}", temp_file_path);
+        }
+        Err(e) => {
+            eprintln!("Failed to download from S3: {:?}", e);
+            return Ok(create_cors_response(500, Some(json!({"error": "Failed to download Parquet file from S3", "details": e.to_string()}).to_string())));
+        }
+    }
+
+    // Setup a standard in-memory DuckDB connection
     let conn = match setup_duckdb_connection() {
         Ok(conn) => conn,
         Err(e) => {
             return Ok(create_cors_response(
                 500,
                 Some(
-                    json!({
-                        "error": "Failed to setup DuckDB connection",
-                        "details": format!("{}", e)
-                    })
-                    .to_string(),
+                    json!({"error": "Failed to setup DuckDB connection", "details": e.to_string()})
+                        .to_string(),
                 ),
             ));
         }
     };
 
-    // Construct S3 path for direct querying
-    let s3_path = format!("s3://{}/{}", bucket_name, request.parquet_key);
-
-    // Get schema directly from S3 parquet file
-    let schema_string = match get_schema_from_parquet(&conn, &s3_path) {
+    // Get schema from the now-local Parquet file
+    let schema_string = match get_schema_from_parquet_file(&conn, &temp_file_path) {
         Ok(schema) => schema,
         Err(e) => {
-            return Ok(create_cors_response(
-                500,
-                Some(
-                    json!({
-                        "error": "Failed to get schema from parquet file",
-                        "details": format!("{}", e)
-                    })
-                    .to_string(),
-                ),
-            ));
+            return Ok(create_cors_response(500, Some(json!({"error": "Failed to get schema from local parquet file", "details": e.to_string()}).to_string())));
         }
     };
 
     println!("Schema: {}", schema_string);
 
-    // Generate SQL query using Bedrock
     let bedrock_response = bedrock_client
         .converse()
         .model_id("apac.amazon.nova-pro-v1:0")
@@ -119,84 +140,34 @@ async fn handler(
                     "schema: {}, question: {}",
                     schema_string, request.message
                 )))
-                .build()
-                .unwrap(),
+                .build()?,
         )
         .send()
         .await;
 
     let sql_query: String = match bedrock_response {
-        Ok(output) => match get_converse_output_text(output) {
-            Ok(text) => text,
-            Err(e) => {
-                return Ok(create_cors_response(
-                    500,
-                    Some(
-                        json!({
-                            "error": "Failed to extract text from Bedrock response",
-                            "details": format!("{}", e)
-                        })
-                        .to_string(),
-                    ),
-                ));
-            }
-        },
+        Ok(output) => get_converse_output_text(output)?,
         Err(e) => {
             eprintln!("Bedrock converse error: {:?}", e);
-            return Ok(create_cors_response(
-                500,
-                Some(
-                    json!({
-                        "error": "Failed to generate SQL query",
-                        "details": format!("Bedrock API error: {}", e)
-                    })
-                    .to_string(),
-                ),
-            ));
+            return Ok(create_cors_response(500, Some(json!({"error": "Failed to generate SQL query", "details": format!("Bedrock API error: {}", e)}).to_string())));
         }
     };
 
     println!("Generated SQL Query: {}", sql_query);
 
-    // Execute SQL query directly on S3 parquet file
-    let structured_data = match execute_sql_query(&conn, &s3_path, &sql_query) {
+    // Execute SQL query on the local parquet data
+    let structured_data = match execute_sql_on_parquet_file(&conn, &temp_file_path, &sql_query) {
         Ok(data) => data,
         Err(e) => {
-            return Ok(create_cors_response(
-                500,
-                Some(
-                    json!({
-                        "error": "Failed to execute SQL query",
-                        "details": format!("{}", e)
-                    })
-                    .to_string(),
-                ),
-            ));
+            return Ok(create_cors_response(500, Some(json!({"error": "Failed to execute SQL query on local data", "details": e.to_string()}).to_string())));
         }
     };
 
-    let json_data = match serde_json::to_string_pretty(&structured_data) {
-        Ok(data) => data,
-        Err(e) => {
-            return Ok(create_cors_response(
-                500,
-                Some(
-                    json!({
-                        "error": "Failed to serialize query results",
-                        "details": format!("{}", e)
-                    })
-                    .to_string(),
-                ),
-            ));
-        }
-    };
-
+    let json_data = serde_json::to_string_pretty(&structured_data)?;
     println!("{:?}", json_data);
 
-    // Get job context for human-readable output
+    // The rest of the function remains the same...
     let job_record = get_job_by_id(&table_name, &request.job_id).await?.unwrap();
-
-    // Make output human-readable using Bedrock
     let make_human_presentable = bedrock_client
         .converse()
         .model_id("apac.amazon.nova-pro-v1:0")
@@ -208,25 +179,18 @@ async fn handler(
                     "data that needs to be presentable: {}, user question: {}, dataset context: {}",
                     json_data, request.message, job_record.context
                 )))
-                .build()
-                .unwrap(),
+                .build()?,
         )
         .send()
         .await;
 
-    let readable_output: String = match make_human_presentable {
-        Ok(read_output) => match get_converse_output_text(read_output) {
-            Ok(text) => text,
-            Err(e) => format!("Failed to extract readable output: {}", e),
-        },
+    let readable_output = match make_human_presentable {
+        Ok(output) => get_converse_output_text(output)?,
         Err(e) => format!("Bedrock make readable error: {}", e),
     };
 
     println!("Human readable output: {}", readable_output);
 
-    let response_body = json!({
-        "response_message": readable_output
-    });
-
+    let response_body = json!({ "response_message": readable_output });
     Ok(create_cors_response(200, Some(response_body.to_string())))
 }

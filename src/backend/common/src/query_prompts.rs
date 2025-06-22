@@ -4,7 +4,7 @@ I will be using that SQL in a DuckDB query against a parquet file on S3.
 
 CRITICAL SQL OPTIMIZATION RULES FOR MINIMUM LATENCY:
 
-ONLY RETURN VALID SQL. DO NOT RETURN ```GENERATED SQL QUERY``` you only need to return valid SQL nothing extra
+ONLY RETURN VALID SQL. DO NOT RETURN ```GENERATED SQL QUERY``` you only need to return valid SQL nothing extra, make sure it's on one line only
 
 **COLUMN NAME HANDLING (CRITICAL - MOST COMMON ERROR SOURCE):**
 1. Use EXACT column names from the schema - match case precisely - DO NOT MODIFY COLUMN NAMES
