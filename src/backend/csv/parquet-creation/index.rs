@@ -6,12 +6,15 @@ use common::cors::create_cors_response;
 use common::parquet_creation::put_job_status;
 use lambda_runtime::{Error, LambdaEvent, service_fn};
 use serde_json::json;
+use std::collections::HashMap;
 use std::env;
 
 #[derive(serde::Deserialize, Debug)]
 struct ParquetCreationRequest {
     job_id: String,
     context_text: String,
+    #[serde(default)]
+    schema: HashMap<String, String>,
 }
 
 #[tokio::main]
@@ -63,6 +66,7 @@ async fn handler(
         &request.job_id,
         "pending",
         &request.context_text,
+        &request.schema,
     )
     .await?;
 

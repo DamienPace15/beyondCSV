@@ -3,6 +3,7 @@ use aws_sdk_dynamodb::Client;
 use common::cors::create_cors_response;
 use lambda_runtime::{Error, LambdaEvent, run, service_fn};
 use serde_json::json;
+use std::collections::HashMap;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -62,6 +63,30 @@ async fn function_handler(
                         }
                     };
 
+                    // Extract context from the item
+                    let context = match item.get("context") {
+                        Some(aws_sdk_dynamodb::types::AttributeValue::S(context_value)) => {
+                            context_value.clone()
+                        }
+                        _ => String::new(), // Default to empty string if not found
+                    };
+
+                    // Extract schema from the item (DynamoDB Map)
+                    let schema = match item.get("schema") {
+                        Some(aws_sdk_dynamodb::types::AttributeValue::M(schema_map)) => {
+                            let mut result_map = HashMap::new();
+                            for (key, value) in schema_map {
+                                if let aws_sdk_dynamodb::types::AttributeValue::S(string_value) =
+                                    value
+                                {
+                                    result_map.insert(key.clone(), string_value.clone());
+                                }
+                            }
+                            result_map
+                        }
+                        _ => HashMap::new(), // Default to empty map if not found
+                    };
+
                     // Determine parquet_complete based on status
                     let parquet_complete = match status {
                         "success" => true,
@@ -74,10 +99,12 @@ async fn function_handler(
                         }
                     };
 
-                    // Return flat JSON structure to match TypeScript expectations
+                    // Return flat JSON structure with context and schema
                     let response_body = json!({
                         "statusCode": 200,
-                        "parquet_complete": parquet_complete
+                        "parquet_complete": parquet_complete,
+                        "context": context,
+                        "schema": schema
                     });
 
                     Ok(create_cors_response(200, Some(response_body.to_string())))
