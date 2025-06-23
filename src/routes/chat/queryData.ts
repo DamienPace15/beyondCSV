@@ -26,7 +26,12 @@ export async function generateResponseFromMessage(
 export async function pollStatus(
 	CORE_API_URL: string,
 	job_id: string
-): Promise<{ statusCode: number; parquet_complete: boolean }> {
+): Promise<{
+	statusCode: number;
+	parquet_complete: boolean;
+	context?: string;
+	schema?: { [key: string]: string };
+}> {
 	const response = await fetch(`${CORE_API_URL}/poll-parquet-status/${job_id}`, {
 		method: 'GET',
 		headers: {
@@ -36,9 +41,10 @@ export async function pollStatus(
 
 	const body = await response.json();
 
-	console.log(JSON.stringify(body));
-
-	const parquet_complete = body.parquet_complete;
-
-	return { statusCode: response.status, parquet_complete };
+	return {
+		statusCode: response.status,
+		parquet_complete: body.parquet_complete,
+		context: body.context,
+		schema: body.schema
+	};
 }

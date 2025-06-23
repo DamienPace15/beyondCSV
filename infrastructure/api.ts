@@ -1,25 +1,6 @@
 import { dynamoTable } from './dynamo';
 import { s3Bucket } from './storage';
 
-/* export const apiGateway = new sst.aws.ApiGatewayV2('easyCSV', {
-	accessLog: { retention: '1 week' },
-	transform: {
-		stage: { autoDeploy: true },
-		api: {
-			name: `${$app.stage}-core-api`,
-			corsConfiguration: {
-				allowCredentials: false,
-				allowHeaders: ['Content-Type', 'Authorization'],
-				allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-				allowOrigins: ['*'],
-				maxAge: 86400
-			},
-			protocolType: 'HTTP'
-		}
-	}
-});
- */
-
 export const apiGateway = new sst.aws.ApiGatewayV1('regionalRestAPI', {
 	accessLog: { retention: '1 week' },
 	endpoint: { type: 'regional' },
@@ -103,7 +84,7 @@ parquetQueue.subscribe(parquetProcessorLambda.arn);
 apiGateway.route('POST /generate-parquet-query', {
 	handler: './.generate-parquet-query',
 	runtime: 'rust',
-	memory: '3008 MB',
+	memory: '1024 MB',
 	timeout: '500 seconds',
 	logging: { logGroup: `${$app.stage}-generate-parquet-query` },
 	environment: { S3_UPLOAD_BUCKET_NAME: s3Bucket.name, DYNAMODB_NAME: dynamoTable.name },
@@ -149,6 +130,28 @@ apiGateway.route('GET /poll-parquet-status/{job_id}', {
 	transform: {
 		function: {
 			name: `${$app.stage}-poll-parquet-status`
+		}
+	}
+});
+
+apiGateway.route('POST /update-context', {
+	handler: './.update-context',
+	runtime: 'rust',
+	memory: '128 MB',
+	logging: { logGroup: `${$app.stage}-update-context` },
+	environment: {
+		DYNAMODB_NAME: dynamoTable.name
+	},
+	permissions: [
+		{
+			actions: ['dynamodb:UpdateItem'],
+			effect: 'allow',
+			resources: [dynamoTable.arn]
+		}
+	],
+	transform: {
+		function: {
+			name: `${$app.stage}-update-context`
 		}
 	}
 });

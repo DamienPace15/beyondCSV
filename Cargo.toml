@@ -65,3 +65,7 @@ path = "src/backend/parquet/poller/index.rs"
 name = "test-processor"
 path = "src/backend/csv/test-processor/index.rs"
 
+[[bin]]
+name = "update-context"
+path = "src/backend/parquet/update-context/index.rs"
+

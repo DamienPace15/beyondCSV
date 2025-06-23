@@ -134,7 +134,8 @@
 				typeSchema,
 				key,
 				job_id,
-				contextText
+				contextText,
+				columnTypes
 			);
 
 			if (response.statusCode !== 200) {
