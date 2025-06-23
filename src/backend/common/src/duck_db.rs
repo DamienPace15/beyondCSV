@@ -1,5 +1,4 @@
 use duckdb::{Connection, Result};
-use serde_json::{Value, json};
 
 pub fn setup_duckdb_connection() -> Result<Connection> {
     let conn = Connection::open_in_memory()?;
@@ -60,40 +59,22 @@ pub fn execute_sql_on_parquet_file(
     conn: &Connection,
     file_path: &str,
     sql_query: &str,
-) -> Result<Value> {
-    // We replace the placeholder 'FROM my_parquet_file' in the Bedrock-generated
-    // query with the actual local file path using DuckDB's `read_parquet` function.
-    let full_sql = sql_query.replace("my_parquet_file", &format!("read_parquet('{}')", file_path));
+) -> Result<String> {
+    println!("[DEBUG] Entering 'execute_sql_on_parquet_file'");
+    println!("[DEBUG]   - Received file_path: '{}'", file_path);
+    println!("[DEBUG]   - Received original SQL query: '{}'", sql_query);
 
-    println!("Executing full SQL: {}", full_sql);
+    let full_sql = sql_query.replace("data", &format!("read_parquet('{}')", file_path));
+    println!("[DEBUG] Executing full transformed SQL: {}", full_sql);
 
-    let mut stmt = conn.prepare(&full_sql)?;
-    let column_names: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
-    let mut results: Vec<serde_json::Map<String, Value>> = Vec::new();
+    // DuckDB can output JSON directly!
+    let json_sql = format!(
+        "SELECT to_json(array_agg(row_to_json(t))) FROM ({}) t",
+        full_sql
+    );
 
-    let mut rows = stmt.query([])?;
-    while let Some(row) = rows.next()? {
-        let mut map = serde_json::Map::new();
-        for (i, name) in column_names.iter().enumerate() {
-            let val: duckdb::types::Value = row.get(i)?;
-            // This conversion logic remains the same
-            let json_val = match val {
-                duckdb::types::Value::Null => Value::Null,
-                duckdb::types::Value::Boolean(b) => Value::Bool(b),
-                duckdb::types::Value::TinyInt(i) => json!(i),
-                duckdb::types::Value::SmallInt(i) => json!(i),
-                duckdb::types::Value::Int(i) => json!(i),
-                duckdb::types::Value::BigInt(i) => json!(i),
-                duckdb::types::Value::Float(f) => json!(f),
-                duckdb::types::Value::Double(d) => json!(d),
-                duckdb::types::Value::Text(s) => Value::String(s.to_string()),
-                _ => Value::String(format!("{:?}", val)),
-            };
-            map.insert(name.clone(), json_val);
-        }
-        results.push(map);
-    }
-    Ok(Value::Array(
-        results.into_iter().map(Value::Object).collect(),
-    ))
+    let mut stmt = conn.prepare(&json_sql)?;
+    let rows = stmt.query_row([], |row| Ok(row.get::<_, String>(0)?))?;
+
+    Ok(rows)
 }

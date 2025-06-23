@@ -131,7 +131,7 @@ async fn handler(
 
     let bedrock_response = bedrock_client
         .converse()
-        .model_id("apac.amazon.nova-pro-v1:0")
+        .model_id("apac.anthropic.claude-sonnet-4-20250514-v1:0")
         .system(SystemContentBlock::Text(USER_MESSAGE.to_string()))
         .messages(
             Message::builder()
@@ -168,9 +168,10 @@ async fn handler(
 
     // The rest of the function remains the same...
     let job_record = get_job_by_id(&table_name, &request.job_id).await?.unwrap();
+
     let make_human_presentable = bedrock_client
         .converse()
-        .model_id("apac.amazon.nova-pro-v1:0")
+        .model_id("apac.anthropic.claude-sonnet-4-20250514-v1:0")
         .system(SystemContentBlock::Text(MAKE_HUMAN_READABLE.to_string()))
         .messages(
             Message::builder()
