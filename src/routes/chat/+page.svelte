@@ -393,7 +393,7 @@
 	}
 
 	.chat-container.sidebar-open {
-		margin-right: 350px;
+		margin-right: 450px;
 	}
 
 	.chat-main {
@@ -412,6 +412,12 @@
 	}
 
 	/* Responsive design */
+	@media (max-width: 1024px) {
+		.chat-container.sidebar-open {
+			margin-right: 0;
+		}
+	}
+
 	@media (max-width: 768px) {
 		.chat-container.sidebar-open {
 			margin-right: 0;

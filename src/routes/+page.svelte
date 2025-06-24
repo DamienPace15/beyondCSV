@@ -104,6 +104,16 @@
 		});
 	}
 
+	function getFilteredColumnTypes() {
+		const filteredTypes: { [key: string]: string } = {};
+		csvHeaders
+			.filter((header) => !excludedColumns.has(header))
+			.forEach((header) => {
+				filteredTypes[header] = columnTypes[header];
+			});
+		return filteredTypes;
+	}
+
 	async function handleUpload() {
 		if (!selectedFile) {
 			error = 'Please select a file to upload';
@@ -142,7 +152,7 @@
 				key,
 				job_id,
 				contextText,
-				columnTypes
+				getFilteredColumnTypes()
 			);
 
 			if (response.statusCode !== 200) {
