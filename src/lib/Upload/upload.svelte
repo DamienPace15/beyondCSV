@@ -3,19 +3,29 @@
 		disabled?: boolean;
 		onFileSelect?: (file: File) => void;
 		onHeadersRead?: (headers: string[]) => void;
+		onDataRead?: (data: any[][]) => void; // Add data callback
 		onError?: (error: string) => void;
 		onReset?: () => void;
 	}
 
-	let { disabled = false, onFileSelect, onHeadersRead, onError, onReset }: Props = $props();
+	let {
+		disabled = false,
+		onFileSelect,
+		onHeadersRead,
+		onDataRead, // Add data callback prop
+		onError,
+		onReset
+	}: Props = $props();
 
 	let files = $state<FileList | null>(null);
 	let isReadingHeaders = $state(false);
+	let isReadingData = $state(false); // Add data reading state
 	let headerError = $state('');
 	let fileInputElement: HTMLInputElement;
 
 	// Computed values
 	const selectedFile = $derived(files?.[0] || null);
+	const isProcessing = $derived(isReadingHeaders || isReadingData);
 
 	function validateCSVFile(file: File): boolean {
 		const fileName = file.name.toLowerCase();
@@ -84,6 +94,73 @@
 		}
 	}
 
+	async function readCSVData(file: File, maxRows: number = 1000): Promise<any[][]> {
+		try {
+			// For large files, read in chunks. For smaller files, read entirely.
+			const maxFileSize = 5 * 1024 * 1024; // 5MB threshold
+			const shouldSample = file.size > maxFileSize;
+
+			let text: string;
+
+			if (shouldSample) {
+				// For large files, read first chunk for sampling
+				const chunk = file.slice(0, maxFileSize);
+				text = await chunk.text();
+			} else {
+				// For smaller files, read entire file
+				text = await file.text();
+			}
+
+			const lines = text.split('\n').filter((line) => line.trim() !== '');
+
+			if (lines.length <= 1) {
+				return []; // No data rows (only headers or empty)
+			}
+
+			// Skip the header row and take up to maxRows for type inference
+			const dataLines = lines.slice(1, Math.min(lines.length, maxRows + 1));
+			const parsedData: any[][] = [];
+
+			for (const line of dataLines) {
+				try {
+					const row = parseCSVRow(line.trim());
+					if (row.length > 0) {
+						// Convert values to appropriate types for better inference
+						const convertedRow = row.map((value) => {
+							if (value === '' || value === null || value === undefined) {
+								return null;
+							}
+
+							// Try to convert to number if it looks like one
+							const trimmed = value.trim();
+
+							// More aggressive numeric detection
+							if (/^-?\d*\.?\d+$/.test(trimmed)) {
+								const num = Number(trimmed);
+								if (!isNaN(num) && isFinite(num)) {
+									return num;
+								}
+							}
+
+							// Keep as string
+							return trimmed;
+						});
+						parsedData.push(convertedRow);
+					}
+				} catch (rowError) {
+					// Skip malformed rows
+					console.warn('Skipped malformed row:', line);
+				}
+			}
+
+			return parsedData;
+		} catch (err) {
+			throw new Error(
+				`Failed to read CSV data: ${err instanceof Error ? err.message : 'Unknown error'}`
+			);
+		}
+	}
+
 	async function handleFileChange() {
 		headerError = '';
 
@@ -104,16 +181,27 @@
 		// Notify parent that a file was selected
 		onFileSelect?.(file);
 
-		isReadingHeaders = true;
 		try {
+			// Step 1: Read headers
+			isReadingHeaders = true;
 			const headers = await readCSVHeaders(file);
 			onHeadersRead?.(headers);
+
+			// Step 2: Read data for type inference (if callback provided)
+			if (onDataRead) {
+				isReadingHeaders = false;
+				isReadingData = true;
+
+				const data = await readCSVData(file);
+				onDataRead(data);
+			}
 		} catch (err) {
-			const error = err instanceof Error ? err.message : 'Failed to read headers';
+			const error = err instanceof Error ? err.message : 'Failed to read CSV file';
 			headerError = error;
 			onError?.(error);
 		} finally {
 			isReadingHeaders = false;
+			isReadingData = false;
 		}
 	}
 
@@ -150,7 +238,7 @@
 			accept=".csv,text/csv"
 			bind:files
 			onchange={handleFileChange}
-			{disabled}
+			disabled={disabled || isProcessing}
 		/>
 	</div>
 
@@ -165,7 +253,7 @@
 				type="button"
 				class="reset-btn"
 				onclick={resetFileInput}
-				{disabled}
+				disabled={disabled || isProcessing}
 				title="Remove selected file"
 			>
 				✕
@@ -180,9 +268,16 @@
 		</div>
 	{/if}
 
+	{#if isReadingData}
+		<div class="status info">
+			<div class="loading-spinner"></div>
+			Analyzing data for automatic type detection...
+		</div>
+	{/if}
+
 	{#if headerError}
 		<div class="status error">
-			<strong>Header Error:</strong>
+			<strong>Error:</strong>
 			{headerError}
 		</div>
 	{/if}
