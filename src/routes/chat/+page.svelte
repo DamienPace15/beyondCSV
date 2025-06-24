@@ -417,27 +417,4 @@
 			margin-right: 0;
 		}
 	}
-
-	/* Scrollbar styling */
-	.messages-container::-webkit-scrollbar,
-	.sidebar::-webkit-scrollbar {
-		width: 6px;
-	}
-
-	.messages-container::-webkit-scrollbar-track,
-	.sidebar::-webkit-scrollbar-track {
-		background: #f1f1f1;
-		border-radius: 3px;
-	}
-
-	.messages-container::-webkit-scrollbar-thumb,
-	.sidebar::-webkit-scrollbar-thumb {
-		background: #aab7b8;
-		border-radius: 3px;
-	}
-
-	.messages-container::-webkit-scrollbar-thumb:hover,
-	.sidebar::-webkit-scrollbar-thumb:hover {
-		background: #8a9ba8;
-	}
 </style>
