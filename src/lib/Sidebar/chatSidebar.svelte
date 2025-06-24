@@ -142,7 +142,7 @@
 		position: fixed;
 		top: 0;
 		right: 0;
-		width: 350px;
+		width: 450px;
 		height: 100vh;
 		background: #f8f9fa;
 		border-left: 1px solid #e9ecef;
@@ -183,25 +183,32 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 0.75rem;
+		padding: 1rem;
 		background: white;
 		border: 1px solid #e9ecef;
 		border-radius: 8px;
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+		min-height: 60px;
+		gap: 1rem;
 	}
 
 	.field-name {
 		font-weight: 600;
 		color: #232f3e;
+		flex: 1;
+		word-break: break-word;
+		min-width: 0;
 	}
 
 	.field-type {
 		background: #ff9900;
 		color: white;
-		padding: 0.25rem 0.5rem;
+		padding: 0.4rem 0.8rem;
 		border-radius: 4px;
 		font-size: 0.875rem;
 		font-weight: 500;
+		white-space: nowrap;
+		flex-shrink: 0;
 	}
 
 	.context-container {
@@ -296,6 +303,26 @@
 
 		.sidebar-toggle {
 			right: 15px;
+		}
+	}
+
+	@media (max-width: 500px) {
+		.sidebar {
+			width: 100vw;
+		}
+
+		.sidebar-content {
+			padding: 1rem;
+		}
+
+		.schema-item {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 0.5rem;
+		}
+
+		.field-type {
+			align-self: flex-end;
 		}
 	}
 
