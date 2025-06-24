@@ -17,6 +17,7 @@
 	let uploadStatus = $state('');
 	let error = $state('');
 	let csvHeaders = $state<string[]>([]);
+	let csvData = $state<any[][]>([]); // Add CSV data state
 	let columnTypes = $state<{ [key: string]: string }>({});
 	let excludedColumns = $state<Set<string>>(new Set());
 	let contextText = $state('');
@@ -47,6 +48,11 @@
 		initializeColumnTypes(headers);
 	}
 
+	// NEW: Handle CSV data read from Upload component
+	function handleDataRead(data: any[][]) {
+		csvData = data;
+	}
+
 	// Handle errors from Upload component
 	function handleUploadError(errorMessage: string) {
 		error = errorMessage;
@@ -56,6 +62,7 @@
 	function handleReset() {
 		selectedFile = null;
 		csvHeaders = [];
+		csvData = []; // Reset CSV data
 		columnTypes = {};
 		excludedColumns = new Set();
 		contextText = '';
@@ -192,12 +199,14 @@
 				disabled={uploading}
 				onFileSelect={handleFileSelect}
 				onHeadersRead={handleHeadersRead}
+				onDataRead={handleDataRead}
 				onError={handleUploadError}
 				onReset={handleReset}
 			/>
 
 			<Colums
 				headers={csvHeaders}
+				data={csvData}
 				bind:columnTypes
 				bind:excludedColumns
 				onColumnTypesChange={handleColumnTypesChange}
