@@ -48,6 +48,3 @@ pub struct ColumnDefinition {
     #[serde(rename = "type")]
     pub column_type: DataType,
 }
-
-// More efficient row representation using Vec instead of HashMap
-pub type EfficientRow = Vec<Option<String>>;

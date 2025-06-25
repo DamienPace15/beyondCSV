@@ -4,11 +4,9 @@ use aws_sdk_bedrockruntime::{
     Client as BedrockClient,
     types::{ContentBlock, ConversationRole, Message, SystemContentBlock},
 };
-// Add the S3 client and other necessary imports for file handling
 use aws_sdk_s3::Client as S3Client;
 use common::{
     cors::create_cors_response,
-    // Use the renamed DuckDB functions
     duck_db::{execute_sql_on_parquet_file, get_schema_from_parquet_file, setup_duckdb_connection},
     dynamo::get_job_by_id,
     parquet_query::get_converse_output_text,
@@ -18,7 +16,6 @@ use lambda_runtime::{Error, LambdaEvent, service_fn};
 use serde::Deserialize;
 use serde_json::json;
 use std::env;
-// Import for writing to the filesystem
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
@@ -65,12 +62,10 @@ async fn handler(
         }
     };
 
-    // Initialize AWS clients for Bedrock and S3
     let sdk_config = aws_config::defaults(BehaviorVersion::latest()).load().await;
     let bedrock_client = BedrockClient::new(&sdk_config);
     let s3_client = S3Client::new(&sdk_config);
 
-    // --- Core Logic Change: Download the file first ---
     let temp_file_path = format!(
         "/tmp/{}",
         request
@@ -105,7 +100,6 @@ async fn handler(
         }
     }
 
-    // Setup a standard in-memory DuckDB connection
     let conn = match setup_duckdb_connection() {
         Ok(conn) => conn,
         Err(e) => {
@@ -119,7 +113,6 @@ async fn handler(
         }
     };
 
-    // Get schema from the now-local Parquet file
     let schema_string = match get_schema_from_parquet_file(&conn, &temp_file_path) {
         Ok(schema) => schema,
         Err(e) => {
@@ -155,7 +148,6 @@ async fn handler(
 
     println!("Generated SQL Query: {}", sql_query);
 
-    // Execute SQL query on the local parquet data
     let structured_data = match execute_sql_on_parquet_file(&conn, &temp_file_path, &sql_query) {
         Ok(data) => data,
         Err(e) => {
@@ -166,7 +158,6 @@ async fn handler(
     let json_data = serde_json::to_string_pretty(&structured_data)?;
     println!("{:?}", json_data);
 
-    // The rest of the function remains the same...
     let job_record = get_job_by_id(&table_name, &request.job_id).await?.unwrap();
 
     let make_human_presentable = bedrock_client

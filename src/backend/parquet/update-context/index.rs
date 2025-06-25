@@ -23,7 +23,6 @@ async fn function_handler(
         return Ok(create_cors_response(200, None));
     }
 
-    // Parse request body
     let body = event.payload.body.unwrap_or_default();
     let request: UpdateContextRequest = match serde_json::from_str(&body) {
         Ok(req) => req,
@@ -44,7 +43,6 @@ async fn function_handler(
 
     let pk = format!("JOB-{}", request.job_id);
 
-    // Update the context field in DynamoDB
     let result = client
         .update_item()
         .table_name(&table_name)

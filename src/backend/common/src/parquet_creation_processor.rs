@@ -17,14 +17,13 @@ use crate::creation_types::{ColumnDefinition, DataType};
 use crate::s3::upload_to_s3;
 
 // Optimized constants for 2.6GB memory utilization
-const ROWS_PER_BATCH: usize = 3_500_000; // 75% larger batches
+const ROWS_PER_BATCH: usize = 3_500_000;
 const S3_CHUNK_SIZE: usize = 512 * 1024 * 1024; // 512MB read buffer
 const MAX_BATCH_MEMORY: usize = 1800 * 1024 * 1024; // 1.8GB per batch
-const CHANNEL_BUFFER_SIZE: usize = 8; // Fewer but larger batches
+const CHANNEL_BUFFER_SIZE: usize = 8;
 const STRING_POOL_SIZE: usize = 50000; // Larger string pool for deduplication
-const PARQUET_BUFFER_SIZE: usize = 512 * 1024 * 1024; // 512MB for parquet writing
+const PARQUET_BUFFER_SIZE: usize = 512 * 1024 * 1024;
 
-// Optimized row representation - avoid strings for numeric types
 #[derive(Debug, Clone)]
 pub enum FieldValue {
     Null,
@@ -62,7 +61,6 @@ impl BatchBuilder {
     fn clear(&mut self) {
         self.rows.clear();
         self.estimated_size = 0;
-        // Keep string pool but clear if too large
         if self.string_pool.len() > STRING_POOL_SIZE * 2 {
             self.string_pool.clear();
         }
@@ -103,14 +101,11 @@ pub async fn stream_csv_to_parquet_optimized(
         content_length as f64 / (1024.0 * 1024.0)
     );
 
-    // Create channels
     let (batch_tx, batch_rx) = mpsc::channel::<RecordBatch>(CHANNEL_BUFFER_SIZE);
 
-    // Create shared data
     let column_definitions = Arc::new(column_definitions.to_vec());
     let job_id = Arc::new(job_id.to_string());
 
-    // Create Parquet schema
     let fields: Vec<Field> = column_definitions
         .iter()
         .map(|col| Field::new(&col.column, col.column_type.to_arrow_type(), true))
@@ -147,7 +142,6 @@ pub async fn stream_csv_to_parquet_optimized(
     let write_result =
         write_parquet_optimized(batch_rx, bucket, output_key, schema.clone(), &job_id).await;
 
-    // Wait for processor to complete
     processor_handle.await?;
 
     write_result
@@ -172,10 +166,8 @@ async fn process_csv_optimized(
     let byte_stream = response.body.into_async_read();
     let buf_reader = tokio::io::BufReader::with_capacity(S3_CHUNK_SIZE, byte_stream);
 
-    // Read CSV using tokio's BufReader with manual parsing
     let mut lines = buf_reader.lines();
 
-    // Read headers
     let header_line = match lines.next_line().await? {
         Some(line) => line,
         None => return Err("Empty CSV file".into()),
@@ -220,7 +212,7 @@ async fn process_csv_optimized(
             )?;
 
             if batch_tx.send(batch).await.is_err() {
-                break; // Writer dropped
+                break;
             }
 
             if total_rows % 100_000 == 0 {
@@ -236,7 +228,6 @@ async fn process_csv_optimized(
         }
     }
 
-    // Send final batch
     if !batch_builder.rows.is_empty() {
         let batch =
             create_record_batch_optimized(&batch_builder.rows, column_definitions, schema.clone())?;
@@ -255,7 +246,6 @@ async fn process_csv_optimized(
     Ok(())
 }
 
-// Efficient CSV line parser that avoids creating a full CSV reader per line
 fn parse_csv_line(line: &str) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     let mut fields = Vec::new();
     let mut field = String::new();
@@ -266,7 +256,6 @@ fn parse_csv_line(line: &str) -> Result<Vec<String>, Box<dyn std::error::Error +
         match ch {
             '"' => {
                 if in_quotes && chars.peek() == Some(&'"') {
-                    // Escaped quote
                     field.push('"');
                     chars.next();
                 } else {

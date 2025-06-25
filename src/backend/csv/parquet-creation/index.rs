@@ -32,7 +32,6 @@ async fn main() -> Result<(), Error> {
 async fn handler(
     event: LambdaEvent<ApiGatewayProxyRequest>,
 ) -> Result<ApiGatewayProxyResponse, Error> {
-    // Handle OPTIONS requests for CORS preflight
     if event.payload.http_method == "OPTIONS" {
         return Ok(create_cors_response(200, None));
     }
