@@ -44,77 +44,69 @@ async fn function_handler(
         .await;
 
     match result {
-        Ok(output) => {
-            match output.item {
-                Some(item) => {
-                    // Extract status from the item
-                    let status = match item.get("status") {
-                        Some(aws_sdk_dynamodb::types::AttributeValue::S(status_value)) => {
-                            status_value.as_str()
-                        }
-                        _ => {
-                            return Ok(create_cors_response(
-                                500,
-                                Some(
-                                    json!({"error": "Status field not found or invalid type"})
-                                        .to_string(),
-                                ),
-                            ));
-                        }
-                    };
+        Ok(output) => match output.item {
+            Some(item) => {
+                let status = match item.get("status") {
+                    Some(aws_sdk_dynamodb::types::AttributeValue::S(status_value)) => {
+                        status_value.as_str()
+                    }
+                    _ => {
+                        return Ok(create_cors_response(
+                            500,
+                            Some(
+                                json!({"error": "Status field not found or invalid type"})
+                                    .to_string(),
+                            ),
+                        ));
+                    }
+                };
 
-                    // Extract context from the item
-                    let context = match item.get("context") {
-                        Some(aws_sdk_dynamodb::types::AttributeValue::S(context_value)) => {
-                            context_value.clone()
-                        }
-                        _ => String::new(), // Default to empty string if not found
-                    };
+                let context = match item.get("context") {
+                    Some(aws_sdk_dynamodb::types::AttributeValue::S(context_value)) => {
+                        context_value.clone()
+                    }
+                    _ => String::new(),
+                };
 
-                    // Extract schema from the item (DynamoDB Map)
-                    let schema = match item.get("schema") {
-                        Some(aws_sdk_dynamodb::types::AttributeValue::M(schema_map)) => {
-                            let mut result_map = HashMap::new();
-                            for (key, value) in schema_map {
-                                if let aws_sdk_dynamodb::types::AttributeValue::S(string_value) =
-                                    value
-                                {
-                                    result_map.insert(key.clone(), string_value.clone());
-                                }
+                let schema = match item.get("schema") {
+                    Some(aws_sdk_dynamodb::types::AttributeValue::M(schema_map)) => {
+                        let mut result_map = HashMap::new();
+                        for (key, value) in schema_map {
+                            if let aws_sdk_dynamodb::types::AttributeValue::S(string_value) = value
+                            {
+                                result_map.insert(key.clone(), string_value.clone());
                             }
-                            result_map
                         }
-                        _ => HashMap::new(), // Default to empty map if not found
-                    };
+                        result_map
+                    }
+                    _ => HashMap::new(),
+                };
 
-                    // Determine parquet_complete based on status
-                    let parquet_complete = match status {
-                        "success" => true,
-                        "pending" => false,
-                        _ => {
-                            return Ok(create_cors_response(
-                                400,
-                                Some(json!({"error": "Invalid status value"}).to_string()),
-                            ));
-                        }
-                    };
+                let parquet_complete = match status {
+                    "success" => true,
+                    "pending" => false,
+                    _ => {
+                        return Ok(create_cors_response(
+                            400,
+                            Some(json!({"error": "Invalid status value"}).to_string()),
+                        ));
+                    }
+                };
 
-                    // Return flat JSON structure with context and schema
-                    let response_body = json!({
-                        "statusCode": 200,
-                        "parquet_complete": parquet_complete,
-                        "context": context,
-                        "schema": schema
-                    });
+                let response_body = json!({
+                    "statusCode": 200,
+                    "parquet_complete": parquet_complete,
+                    "context": context,
+                    "schema": schema
+                });
 
-                    Ok(create_cors_response(200, Some(response_body.to_string())))
-                }
-                None => Ok(create_cors_response(
-                    404,
-                    Some(json!({"error": "Job not found"}).to_string()),
-                )),
+                Ok(create_cors_response(200, Some(response_body.to_string())))
             }
-        }
+            None => Ok(create_cors_response(
+                404,
+                Some(json!({"error": "Job not found"}).to_string()),
+            )),
+        },
         Err(e) => {
             eprintln!("DynamoDB error: {:?}", e);
             Ok(create_cors_response(

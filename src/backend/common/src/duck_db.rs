@@ -6,10 +6,7 @@ pub fn setup_duckdb_connection() -> Result<Connection> {
     Ok(conn)
 }
 
-/// Retrieves the schema from a local Parquet file.
-/// It uses DuckDB's `parquet_schema` function for efficient metadata reading.
 pub fn get_schema_from_parquet_file(conn: &Connection, file_path: &str) -> Result<String> {
-    // Use DESCRIBE on a SELECT statement for a more reliable schema introspection
     let describe_sql = format!("DESCRIBE SELECT * FROM read_parquet('{}')", file_path);
 
     let mut stmt = conn.prepare(&describe_sql).map_err(|e| {
@@ -41,7 +38,6 @@ pub fn get_schema_from_parquet_file(conn: &Connection, file_path: &str) -> Resul
         }
     }
 
-    // Add a check to ensure we actually got a schema. If not, the file might be invalid.
     if schema_parts.is_empty() {
         println!(
             "[ERROR] The DESCRIBE query returned no rows. The file might be empty or invalid."
@@ -53,19 +49,13 @@ pub fn get_schema_from_parquet_file(conn: &Connection, file_path: &str) -> Resul
     Ok(final_schema)
 }
 
-/// Executes a given SQL query against a local Parquet file.
-/// DuckDB's `read_parquet` function reads the data from the local path.
 pub fn execute_sql_on_parquet_file(
     conn: &Connection,
     file_path: &str,
     sql_query: &str,
 ) -> Result<String> {
-    println!("[DEBUG] Entering 'execute_sql_on_parquet_file'");
-    println!("[DEBUG]   - Received file_path: '{}'", file_path);
-    println!("[DEBUG]   - Received original SQL query: '{}'", sql_query);
-
     let full_sql = sql_query.replace("data", &format!("read_parquet('{}')", file_path));
-    println!("[DEBUG] Executing full transformed SQL: {}", full_sql);
+    println!("Executing full transformed SQL: {}", full_sql);
 
     // DuckDB can output JSON directly!
     let json_sql = format!(
