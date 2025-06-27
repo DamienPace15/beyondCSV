@@ -2,6 +2,10 @@
 
 This is my submission for https://awslambdahackathon.devpost.com/
 
+Live demo website: https://d396qtz3n6aw4l.cloudfront.net
+
+(I suggest testing on this website as you might run into some problems with deploying in other regions due to bedrock inference across regions, if you are comfortable go ahead and change some stuff 🚀)
+
 ### Inspiration
 
 My name is [Damien Pace](https://www.linkedin.com/in/damienpace1/) and I am a solution architect at Acciona in Melbourne, Australia. I was a backend engineer that mainly worked with Lambda for my first 3.5 years of my career. I love Lambdas so I thought this would be a perfect hackathon for me. My career history explains exactly why my frontend code and UX looks like a career backend dev has done it.
@@ -26,16 +30,6 @@ So I started thinking, surely I could make something to help them out? Then as m
 - Frontend uses Typescript/Javascript, HTML and CSS
 - AWS Services used: Lambda, API Gateway, S3, SQS, DynamoDB, Bedrock
 - Used Claude 4 to assist with development
-
-## AWS Services used
-
-- AWS Lambda
-- API Gateway
-- S3
-- SQS
-- DynamoDB
-- Bedrock
-- Cloudfront
 
 ## How do Buzz and Lambdas work together?
 
@@ -216,3 +210,15 @@ Ensure that your AWS credentials are configured via the CLI.
 If you want to deploy to a different region `change the provider.aws.region field in sst.config.ts on line 13`, otherwise it will deploy to `ap-southeast-2`, if you change it you will need to run cargo build again then deploy
 
 `npx sst deploy --stage prod`
+
+## BEWARE
+
+This is a demo and test client, upload your own dataset at your own risk. I suggest using the below or finding something online that interests you. Don't use company data on this demo and POC please.
+
+## Datasets
+
+Here are some datasets found online to help speed up looking for some
+
+- https://www.kaggle.com/datasets/sahirmaharajj/electric-vehicle-population
+- https://www.kaggle.com/datasets/ka66ledata/project-management-risk-raw
+- https://www.kaggle.com/datasets/neuralsorcerer/geographic-product-demand-dataset
