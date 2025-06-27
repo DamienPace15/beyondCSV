@@ -1,4 +1,6 @@
-## Submission details
+## AWS Lambda Hackathon Submission details
+
+This is my submission for https://awslambdahackathon.devpost.com/
 
 ### Inspiration
 
