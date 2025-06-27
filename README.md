@@ -146,3 +146,61 @@ The system is optimized for 2.6GB Lambda memory with careful resource allocation
 
 This is still being tested, coming across some big test data is not the easiest thing to find.
 ![test](utilisation.png)
+
+### What's next?
+
+The state of the job record is updated to success and we move onto the chat functionality.
+
+## The second flow
+
+![queryDataFlow](queryDataFlow.png)
+
+Once the chat page has loaded, it will trigger a lambda via API Gateway and poll continuously until it receives a success response from dynamoDB.
+
+## Breaking down the important lambda for the query flow
+
+## What was the approach?
+
+This lambda changed multiple times and had a few trade offs in regards to reading the parquet file and performing SQL queries.
+
+** What this lambda does **
+
+- download parquet in memory (I know I have contradicted myself above, but there is a reason)
+- create in memory duckdb client
+- generate a request based off the question and the schema using claude 4 and bedrock
+- use that SQL query with duckdb to read data from in memory parquet file
+- make results human readable with claude 4
+
+You may be asking how long does this take?
+
+Overall I was getting consistent 4-6 response times deployed in `ap-southeast-2` on all datasets.
+
+But Damien... why does `ap-southeast-2` matter?
+
+I am using bedrock since data will be safe and not used to train models. This means that I will get some extra latency doing a round trip to the states. (No lightspeed for Buzz 🥲)
+
+I also can init the duckdb instance to be shared across invocations but I honestly have just ran out of time to do anymore as a full time working dad, you can spiral into rabbit holes for the rest of your days about how you can optimize your side projects to shave off 0.1 seconds of latency. We've all been there.
+
+I suspect this would cut off a second or two if it was deployed in the states and had some minor optimizations. But that's for another version.
+
+## How does my natural language get data from a parquet file?
+
+Using Claude and the schema that gets auto inferred at upload of the CSV file on the frontend Buzz generates some SQL for you.
+
+The full prompt is in `src/backend/common/src/query_prompts.rs` but it has a few rules.
+
+- Only generate SQL based off the schema and the question the user has inputted.
+- a bunch of SQL and duckDB SQL optimizations courtesy of Claude 4.
+- and rules around variations
+
+Variations in this context are important, when I was doing my testing I found myself trying to type SQL in normal English which just seemed like a massive sticking point from an end user perspective, they might as well go learn SQL. You'd need to know what's exactly in your dataset.
+
+With a little bit of magic Claude and Buzz can figure out that you are looking for and search for items with different variations of what you are looking for. A drink could be called coke, alcohol, water.
+
+### How did this lambda evolve over time?
+
+First approach was using a [polars crate](https://docs.rs/polars/latest/polars/index.html) and querying directly from an S3 bucket with the generated SQL. But I soon discovered that Polars SQL was slightly different and I didn't want to rely on heavy prompting to get results.
+
+I also considered Athena but I wanted to keep this as lambda as possible and only use AWS resources it would be impossible to create myself (I would love to recreate s3 and api gateway but I don't have the time and honestly the skills).
+
+Getting duckdb to play nicely with s3 and querying it directly was a few hours of headaches, it had something to do with the binaries of the duckdb crate and lambda not being compatible. I considered using a docker image but thought it's just not worth it when I can download the parquet in memory and deal with it another time.
