@@ -61,6 +61,14 @@ Damien: "Is there too much data on it and you either can't open it or it's just 
 colleague: "How'd you know?" <br>
 Damien: 😀<br>
 
-## Utilising Lambda for the Hackathon
+Sometimes these people need a database or need something in a datalake and with limited resources it can leave them blocked for weeks or months. Some colleagues don't have the technical skills or have some limited Python knowledge and run local scritps that takes days and a lot of LLM calls vibe coding their way into a mess.
+
+So I started thinking, surely I could make something to help them out? Then as my 3 year old son came around the corner with his hand on his arm shooting a lazer at me screaming "BUZZ LIGHTYEAR!" I thought "what would buzz do?". Then it hit me, buzz would finish the mission. That's how Buzz CSV was born. I wanted to give them something that went above and beyond a CSV.
+
+## How does Buzz work in lambdas?
+
+There are 2 different flows
+
+### Processing the CSV file into a parquet file
 
 ![Screenshot of the application](createParquet.png)
