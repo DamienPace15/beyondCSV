@@ -48,6 +48,19 @@ Ensure that your AWS credentials are configured via the CLI.
 
 `npx sst deploy --stage prod`
 
+## Submisison details
+
+### Inspiration
+
+My name is Damien Pace and I am a solution architect at Acciona in Melbourne, Australia. I was a backend engineer that mainly worked with Lambda for my first 3.5 years of my career. I love Lambdas so I thought this would be a perfect hackathon for me.
+
+I currently work in an enterprise environment where people get lots of data from 3rd party sources that is just dumped into an excel spreadsheet and I get approached multiple times a month with conversations go like this.
+
+colleague: "Hey Damien, I am working with an excel spreadsheet..."
+Damien: "Is there too much data on it and you either can't open it or it's just getting slower by the day?"
+colleague: "How'd you know?"
+Damien: 😀
+
 ## Utilising Lambda for the Hackathon
 
 ![Screenshot of the application](createParquet.png)
