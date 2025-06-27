@@ -132,17 +132,17 @@ Architecture Flow
 
 ![Threading diagram](threadDiagram.png)
 
-## Memory Management Strategy
+### Memory Management Strategy
 
 The system is optimized for 2.6GB Lambda memory with careful resource allocation:
 
 ![Memory Allocation](MemoryAllocation.png)
 
-## Data Flow Pipeline
+### Data Flow Pipeline
 
 ![DataFlow](DataFlow.png)
 
-## Results
+### Results
 
 This is still being tested, coming across some big test data is not the easiest thing to find.
 ![test](utilisation.png)
