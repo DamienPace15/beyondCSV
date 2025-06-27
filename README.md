@@ -56,10 +56,10 @@ My name is Damien Pace and I am a solution architect at Acciona in Melbourne, Au
 
 I currently work in an enterprise environment where people get lots of data from 3rd party sources that is just dumped into an excel spreadsheet and I get approached multiple times a month with conversations go like this.
 
-colleague: "Hey Damien, I am working with an excel spreadsheet..."
-Damien: "Is there too much data on it and you either can't open it or it's just getting slower by the day?"
-colleague: "How'd you know?"
-Damien: 😀
+colleague: "Hey Damien, I am working with an excel spreadsheet..." <br>
+Damien: "Is there too much data on it and you either can't open it or it's just getting slower by the day?" <br>
+colleague: "How'd you know?" <br>
+Damien: 😀<br>
 
 ## Utilising Lambda for the Hackathon
 
