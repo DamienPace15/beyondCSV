@@ -30,7 +30,7 @@ Currently I am deploying in `ap-southeast-2` and I require an instance profile o
 - Backend is rust
 - Frontend uses Typescript/Javascript, HTML and CSS
 - AWS Services used: Lambda, API Gateway, S3, SQS, DynamoDB, Bedrock
-- Used Claude 4 to assist with developemnt
+- Used Claude 4 to assist with development
 
 ## Installing everything
 
@@ -61,9 +61,9 @@ Damien: "Is there too much data on it and you either can't open it or it's just 
 colleague: "How'd you know?" <br>
 Damien: 😀<br>
 
-Sometimes these people need a database or need something in a datalake and with limited resources it can leave them blocked for weeks or months. Some colleagues don't have the technical skills or have some limited Python knowledge and run local scritps that takes days and a lot of LLM calls vibe coding their way into a mess.
+Sometimes these people need a database or need something in a datalake and with limited resources it can leave them blocked for weeks or months. Some colleagues don't have the technical skills or have some limited Python knowledge and run local scripts that takes days and a lot of LLM calls vibe coding their way into a mess.
 
-So I started thinking, surely I could make something to help them out? Then as my 3 year old son came around the corner with his hand on his arm shooting a lazer at me screaming "BUZZ LIGHTYEAR!" I thought "what would buzz do?". Then it hit me, buzz would finish the mission. That's how Buzz CSV was born. I wanted to give them something that went above and beyond a CSV.
+So I started thinking, surely I could make something to help them out? Then as my 3 year old son came around the corner with his hand on his arm shooting a laser at me screaming "BUZZ LIGHTYEAR!" I thought "what would buzz do?". Then it hit me, buzz would finish the mission. That's how Buzz CSV was born. I wanted to give them something that went above and beyond a CSV.
 
 ## How does Buzz work in lambdas?
 
@@ -76,7 +76,7 @@ There are 2 different flows
 ### High level breakdown
 
 - User uploads a csv file to s3
-- On succesful upload, trigger a lambda via an api gateway
+- On successful upload, trigger a lambda via an api gateway
 - parquet creation producer lambda sends a payload for the csv file to be processed asynchronously
 - creates a dynamoDB record with a pending state, context, and schema for the frontend display
 - return success to the user
@@ -87,17 +87,18 @@ In this flow the most important lambda is the `parquet-creation-processor`.
 
 In the spirit of lambda and how I like to build, I didn't want to get into a situation where a user would hit some limitations with file size either saving it into memory or in ephemeral storage as both have a 10GB hard limit.
 
-If I started off small and had a file that ran out of memory I could just up the lambda memory and storage space, but I am just delaying the inevitable of running into the same problem again beacuse I haven't actually fixed the problem, I am just throwing more memory and storage at a bad design.
+If I started off small and had a file that ran out of memory I could just up the lambda memory and storage space, but I am just delaying the inevitable of running into the same problem again because I haven't actually fixed the problem, I am just throwing more memory and storage at a bad design.
 
 It also makes it harder to extend in the future if I ever get time, I can see a future where people need to query multiple related datasets at the same time.
 
-I wanted this be quick and efficient (written in rust btw) so I set a memory limit of 3008MB, I was finding mixed answers regarding vcpu and how it scales with memory so I used [this artcle](https://dev.to/takuma818t/lambda-performance-evaluation-the-relationship-between-memory-and-internal-vcpu-architecture-and-their-comparison-3911) and pushed it to the max memory for 2 vcpus.
+I wanted this be quick and efficient (written in rust btw) so I set a memory limit of 3008MB, I was finding mixed answers regarding vcpu and how it scales with memory so I used [this article](https://dev.to/takuma818t/lambda-performance-evaluation-the-relationship-between-memory-and-internal-vcpu-architecture-and-their-comparison-3911) and pushed it to the max memory for 2 vcpus.
 
 ### Multithreaded CSV to Parquet Conversion System
 
 ### Overview
 
-I went with a system that processes large CSV files from S3 and converts them to optimized Parquet format using a producer-consumer pattern with async Rust and Tokio channels.
+I went with a system that processes large CSV files from S3 and converts them to optimized Parquet format using a producer-consumer pattern with async Rust and Tokio channels. I wanted to push some boundaries with the memory limit and hover around 90 percent utilization.
+
 Architecture Flow
 
 ![Architecture Flow](archFlow.png)
@@ -129,7 +130,6 @@ Architecture Flow
 - Writes compressed Parquet with SNAPPY compression
 - Uploads final file to S3
 
-Detailed Threading Diagram
 ![Threading diagram](threadDiagram.png)
 
 ## Memory Management Strategy
@@ -141,3 +141,8 @@ The system is optimized for 2.6GB Lambda memory with careful resource allocation
 ## Data Flow Pipeline
 
 ![DataFlow](DataFlow.png)
+
+## Results
+
+This is still being tested, coming across some big test data is not the easiest thing to find.
+![test](utilisation.png)
