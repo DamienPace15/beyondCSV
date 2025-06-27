@@ -1,5 +1,3 @@
-## Getting started
-
 ## Required to deploy
 
 node: https://nodejs.org/en/download
@@ -49,3 +47,7 @@ Ensure that your AWS credentials are configured via the CLI.
 **If you want to deploy to a different region change the provider.aws.region field in sst.config.ts on line 13, otherwise it will deploy to ap-southeast-2, if you change it you will need to run cargo build again then deploy**
 
 `npx sst deploy --stage prod`
+
+## Utilising Lambda for the Hackathon
+
+![Screenshot of the application](createParquet.png)
