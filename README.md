@@ -1,71 +1,41 @@
-## Required to deploy
-
-node: https://nodejs.org/en/download
-npm: https://www.ramotion.com/blog/how-to-install-npm/
-rust: https://www.rust-lang.org/tools/install
-cargo: https://doc.rust-lang.org/cargo/getting-started/installation.html
-
-I am using the following for the demo
-node: 23.6
-npm: 11.4
-rust: 1.87
-cargo: 1.87
-
-## Good to knows
-
-Infrastructure is deployed via sst v3. If you are deploying with a windows machine it's currently in beta, if you work on a linux/unix machine it should work fine.
-https://sst.dev/docs/start/aws/svelte/#serverless
-
-You will need to have your aws credentials configured via the CLI to deploy.
-
-### Bedrock gotchas
-
-Currently I am deploying in `ap-southeast-2` and I require an instance profile on bedrock to infer across region for claude. If you are deploying via a region that doesn't support cross region inference for claude, you will need to update `src/backend/parquet/generate-query/index.rs`, line 127 and 165 with the correct modelId.
-
-## Tools used
-
-- SvelteKit 5: https://svelte.dev/docs/kit/introduction,https://sst.dev/docs/start/aws/svelte/#serverless
-- Cloudfront to deploy the website
-- SST V3: https://sst.dev/docs/start/aws/svelte/#serverless
-- Backend is rust
-- Frontend uses Typescript/Javascript, HTML and CSS
-- AWS Services used: Lambda, API Gateway, S3, SQS, DynamoDB, Bedrock
-- Used Claude 4 to assist with development
-
-## Installing everything
-
-Pull the repo
-`npm run install`
-`npx sst install`
-`cargo build --release` OR `cargo build`. --release takes longer but the code will run quicker.
-
-## how to deploy
-
-Ensure that you have ran the install step above
-Ensure that your AWS credentials are configured via the CLI.
-
-**If you want to deploy to a different region change the provider.aws.region field in sst.config.ts on line 13, otherwise it will deploy to ap-southeast-2, if you change it you will need to run cargo build again then deploy**
-
-`npx sst deploy --stage prod`
-
-## Submisison details
+## Submission details
 
 ### Inspiration
 
-My name is [Damien Pace](https://www.linkedin.com/in/damienpace1/) and I am a solution architect at Acciona in Melbourne, Australia. I was a backend engineer that mainly worked with Lambda for my first 3.5 years of my career. I love Lambdas so I thought this would be a perfect hackathon for me.
+My name is [Damien Pace](https://www.linkedin.com/in/damienpace1/) and I am a solution architect at Acciona in Melbourne, Australia. I was a backend engineer that mainly worked with Lambda for my first 3.5 years of my career. I love Lambdas so I thought this would be a perfect hackathon for me. My career history explains exactly why my frontend code and UX looks like a career backend dev has done it.
 
 I currently work in an enterprise environment where people get lots of data from 3rd party sources that is just dumped into an excel spreadsheet and I get approached multiple times a month with conversations go like this.
 
-colleague: "Hey Damien, I am working with an excel spreadsheet..." <br>
+Colleague: "Hey Damien, I am working with an excel spreadsheet..." <br>
 Damien: "Is there too much data on it and you either can't open it or it's just getting slower by the day?" <br>
-colleague: "How'd you know?" <br>
+Colleague: "How'd you know?" <br>
 Damien: 😀<br>
 
 Sometimes these people need a database or need something in a datalake and with limited resources it can leave them blocked for weeks or months. Some colleagues don't have the technical skills or have some limited Python knowledge and run local scripts that takes days and a lot of LLM calls vibe coding their way into a mess.
 
 So I started thinking, surely I could make something to help them out? Then as my 3 year old son came around the corner with his hand on his arm shooting a laser at me screaming "BUZZ LIGHTYEAR!" I thought "what would buzz do?". Then it hit me, buzz would finish the mission. That's how Buzz CSV was born. I wanted to give them something that went above and beyond a CSV.
 
-## How does Buzz work in lambdas?
+## Tools used
+
+- SvelteKit 5: https://svelte.dev/docs/kit/introduction https://sst.dev/docs/start/aws/svelte/#serverless
+- Cloudfront to deploy the website via SST V3
+- SST V3: https://sst.dev/docs/start/aws/svelte/#serverless
+- Backend is rust
+- Frontend uses Typescript/Javascript, HTML and CSS
+- AWS Services used: Lambda, API Gateway, S3, SQS, DynamoDB, Bedrock
+- Used Claude 4 to assist with development
+
+## AWS Services used
+
+- AWS Lambda
+- API Gateway
+- S3
+- SQS
+- DynamoDB
+- Bedrock
+- Cloudfront
+
+## How do Buzz and Lambdas work together?
 
 There are 2 different flows
 
@@ -81,9 +51,7 @@ There are 2 different flows
 - creates a dynamoDB record with a pending state, context, and schema for the frontend display
 - return success to the user
 
-### Breaking down the important lambda
-
-In this flow the most important lambda is the `parquet-creation-processor`.
+### Breaking down the parquet-creation-processor
 
 In the spirit of lambda and how I like to build, I didn't want to get into a situation where a user would hit some limitations with file size either saving it into memory or in ephemeral storage as both have a 10GB hard limit.
 
@@ -91,7 +59,7 @@ If I started off small and had a file that ran out of memory I could just up the
 
 It also makes it harder to extend in the future if I ever get time, I can see a future where people need to query multiple related datasets at the same time.
 
-I wanted this be quick and efficient (written in rust btw) so I set a memory limit of 3008MB, I was finding mixed answers regarding vcpu and how it scales with memory so I used [this article](https://dev.to/takuma818t/lambda-performance-evaluation-the-relationship-between-memory-and-internal-vcpu-architecture-and-their-comparison-3911) and pushed it to the max memory for 2 vcpus.
+I wanted this be quick and efficient (written in rust btw 🦀) so I set a memory limit of 3008MB, I was finding mixed answers regarding vcpu and how it scales with memory so I used [this article](https://dev.to/takuma818t/lambda-performance-evaluation-the-relationship-between-memory-and-internal-vcpu-architecture-and-their-comparison-3911) and pushed it to the max memory for 2 vcpus.
 
 ### Multithreaded CSV to Parquet Conversion System
 
@@ -163,7 +131,7 @@ Once the chat page has loaded, it will trigger a lambda via API Gateway and poll
 
 This lambda changed multiple times and had a few trade offs in regards to reading the parquet file and performing SQL queries.
 
-** What this lambda does **
+## What this lambda does
 
 - download parquet in memory (I know I have contradicted myself above, but there is a reason)
 - create in memory duckdb client
@@ -197,6 +165,8 @@ Variations in this context are important, when I was doing my testing I found my
 
 With a little bit of magic Claude and Buzz can figure out that you are looking for and search for items with different variations of what you are looking for. A drink could be called coke, alcohol, water.
 
+To make it human readable I added in a context box to the data where users could get as detailed as they like.
+
 ### How did this lambda evolve over time?
 
 First approach was using a [polars crate](https://docs.rs/polars/latest/polars/index.html) and querying directly from an S3 bucket with the generated SQL. But I soon discovered that Polars SQL was slightly different and I didn't want to rely on heavy prompting to get results.
@@ -204,3 +174,43 @@ First approach was using a [polars crate](https://docs.rs/polars/latest/polars/i
 I also considered Athena but I wanted to keep this as lambda as possible and only use AWS resources it would be impossible to create myself (I would love to recreate s3 and api gateway but I don't have the time and honestly the skills).
 
 Getting duckdb to play nicely with s3 and querying it directly was a few hours of headaches, it had something to do with the binaries of the duckdb crate and lambda not being compatible. I considered using a docker image but thought it's just not worth it when I can download the parquet in memory and deal with it another time.
+
+## Required to deploy
+
+node: https://nodejs.org/en/download <br>
+npm: https://www.ramotion.com/blog/how-to-install-npm/ <br>
+rust: https://www.rust-lang.org/tools/install <br>
+cargo: https://doc.rust-lang.org/cargo/getting-started/installation.html <br>
+
+I am using the following for the demo <br>
+node: 23.6 <br>
+npm: 11.4 <br>
+rust: 1.87 <br>
+cargo: 1.87 <br>
+
+## Good to knows
+
+Infrastructure is deployed via sst v3. If you are deploying with a windows machine it's currently in beta, if you work on a linux/unix machine it should work fine.
+https://sst.dev/docs/start/aws/svelte/#serverless
+
+You will need to have your aws credentials configured via the CLI to deploy.
+
+### Bedrock gotchas
+
+Currently I am deploying in `ap-southeast-2` and I require an instance profile on bedrock to infer across region for claude. If you are deploying via a region that doesn't support cross region inference for claude, you will need to update `src/backend/parquet/generate-query/index.rs`, line 127 and 165 with the correct modelId.
+
+## Installing everything
+
+Pull the repo <br>
+`npm run install` <br>
+`npx sst install` <br>
+`cargo build --release` OR `cargo build`. --release takes longer but the code will run quicker.
+
+## How to deploy
+
+Ensure that you have ran the install step above
+Ensure that your AWS credentials are configured via the CLI.
+
+If you want to deploy to a different region `change the provider.aws.region field in sst.config.ts on line 13`, otherwise it will deploy to `ap-southeast-2`, if you change it you will need to run cargo build again then deploy
+
+`npx sst deploy --stage prod`
