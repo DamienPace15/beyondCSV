@@ -72,3 +72,125 @@ There are 2 different flows
 ### Processing the CSV file into a parquet file
 
 ![Screenshot of the application](createParquet.png)
+
+### High level breakdown
+
+- User uploads a csv file to s3
+- On succesful upload, trigger a lambda via an api gateway
+- parquet creation producer lambda sends a payload for the csv file to be processed asynchronously
+- creates a dynamoDB record with a pending state, context, and schema for the frontend display
+- return success to the user
+
+### Breaking down the important lambda
+
+In this flow the most important lambda is the `parquet-creation-processor`.
+
+In the spirit of lambda and how I like to build, I didn't want to get into a situation where a user would hit some limitations with file size either saving it into memory or in ephemeral storage as both have a 10GB hard limit.
+
+If I started off small and had a file that ran out of memory I could just up the lambda memory and storage space, but I am just delaying the inevitable of running into the same problem again beacuse I haven't actually fixed the problem, I am just throwing more memory and storage at a bad design.
+
+It also makes it harder to extend in the future if I ever get time, I can see a future where people need to query multiple related datasets at the same time.
+
+I wanted this be quick and efficient (written in rust btw) so I set a memory limit of 3008MB, I was finding mixed answers regarding vcpu and how it scales with memory so I used [this artcle](https://dev.to/takuma818t/lambda-performance-evaluation-the-relationship-between-memory-and-internal-vcpu-architecture-and-their-comparison-3911) and pushed it to the max memory for 2 vcpus.
+
+### Multithreaded CSV to Parquet Conversion System
+
+### Overview
+
+This system processes large CSV files from S3 and converts them to optimized Parquet format using a producer-consumer pattern with async Rust and Tokio channels.
+Architecture Flow
+
+┌─────────────────┐ ┌──────────────────┐ ┌─────────────────┐
+│ SQS Message │───▶│ Lambda Handler │───▶│ S3 Upload │
+│ │ │ │ │ │
+│ - job_id │ │ Coordinates the │ │ Final .parquet │
+│ - s3_key │ │ entire process │ │ file storage │
+│ - column_defs │ │ │ │ │
+└─────────────────┘ └──────────────────┘ └─────────────────┘
+│
+▼
+┌──────────────────┐
+│ Multi-threaded │
+│ Processing Core │
+└──────────────────┘
+
+Core Multithreading Pattern
+The system uses a Producer-Consumer pattern with two main threads:
+
+### Thread 1: CSV Processor (Producer)
+
+- Purpose: Stream and parse CSV data from S3
+- Operations:
+  - Downloads CSV in 512MB chunks
+  - Parses CSV lines with custom parser
+  - Converts raw strings to typed values (FieldValue enum)
+  - Batches rows (3.5M rows or 1.8GB per batch)
+  - Sends RecordBatch objects through channel
+
+Thread 2: Parquet Writer (Consumer)
+
+Purpose: Write optimized Parquet files
+Operations:
+
+Receives RecordBatch objects from channel
+Converts to Arrow columnar format
+Writes compressed Parquet with SNAPPY compression
+Uploads final file to S3
+
+Detailed Threading Diagram
+┌─────────────────────────────────────────────────────────────────┐
+│ Main Thread │
+│ ┌─────────────────┐ ┌───────────────────┐ │
+│ │ Lambda Entry │────────────────────▶│ Parquet Writer │ │
+│ │ Point │ │ (Consumer) │ │
+│ └─────────────────┘ └───────────────────┘ │
+│ │ ▲ │
+│ ▼ │ │
+│ ┌─────────────────┐ ┌─────────────────┐ │ │
+│ │ Spawn Processor │ │ Channel │ │ │
+│ │ Task │ │ (Buffer: 8) │──────┘ │
+│ └─────────────────┘ └─────────────────┘ │
+│ │ ▲ │
+│ ▼ │ │
+│ ┌─────────────────────────────────┴─────────────────────────┐ │
+│ │ Spawned Task Thread │ │
+│ │ ┌─────────────────────────────────────────────────────┐ │ │
+│ │ │ CSV Processor (Producer) │ │ │
+│ │ │ │ │ │
+│ │ │ 1. Stream from S3 (512MB chunks) │ │ │
+│ │ │ 2. Parse CSV lines │ │ │
+│ │ │ 3. Convert to typed FieldValues │ │ │
+│ │ │ 4. Batch rows (3.5M rows/1.8GB) │ │ │
+│ │ │ 5. Create RecordBatch │ │ │
+│ │ │ 6. Send via channel ─────────────────────────────────┘ │
+│ │ └─────────────────────────────────────────────────────┘ │
+│ └─────────────────────────────────────────────────────────────┘
+└─────────────────────────────────────────────────────────────────┘
+Memory Management Strategy
+The system is optimized for 2.6GB Lambda memory with careful resource allocation:
+┌─────────────────────────────────────────────────────────────┐
+│ Memory Allocation │
+│ │
+│ CSV Processing Thread: │
+│ ├─ S3 Read Buffer: 512MB │
+│ ├─ Batch Memory: 1.8GB (3.5M rows) │
+│ └─ String Pool: ~50K strings for deduplication │
+│ │
+│ Parquet Writing Thread: │
+│ ├─ Arrow Arrays: Dynamic based on batch │
+│ ├─ Parquet Buffer: 512MB │
+│ └─ Compression Buffer: Dynamic │
+│ │
+│ Channel Buffer: 8 RecordBatch objects │
+│ │
+│ Total: ~2.6GB peak usage │
+└─────────────────────────────────────────────────────────────┘
+Data Flow Pipeline
+┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐
+│ S3 │───▶│ CSV │───▶│ Batch │───▶│ Record │───▶│ Parquet │
+│ File │ │ Parser │ │ Builder │ │ Batch │ │ Writer │
+└─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘
+│ │ │ │ │
+▼ ▼ ▼ ▼ ▼
+Raw CSV String Arrays OptimizedRow Arrow Arrays Compressed
+Data + Type Conv. Collections (Columnar) Binary Data
