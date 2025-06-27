@@ -97,100 +97,47 @@ I wanted this be quick and efficient (written in rust btw) so I set a memory lim
 
 ### Overview
 
-This system processes large CSV files from S3 and converts them to optimized Parquet format using a producer-consumer pattern with async Rust and Tokio channels.
+I went with a system that processes large CSV files from S3 and converts them to optimized Parquet format using a producer-consumer pattern with async Rust and Tokio channels.
 Architecture Flow
 
-┌─────────────────┐ ┌──────────────────┐ ┌─────────────────┐
-│ SQS Message │───▶│ Lambda Handler │───▶│ S3 Upload │
-│ │ │ │ │ │
-│ - job_id │ │ Coordinates the │ │ Final .parquet │
-│ - s3_key │ │ entire process │ │ file storage │
-│ - column_defs │ │ │ │ │
-└─────────────────┘ └──────────────────┘ └─────────────────┘
-│
-▼
-┌──────────────────┐
-│ Multi-threaded │
-│ Processing Core │
-└──────────────────┘
+![Architecture Flow](archFlow.png)
 
-Core Multithreading Pattern
-The system uses a Producer-Consumer pattern with two main threads:
+## Core Multithreading Pattern
+
+**Producer-Consumer pattern** with two main threads
 
 ### Thread 1: CSV Processor (Producer)
 
-- Purpose: Stream and parse CSV data from S3
-- Operations:
-  - Downloads CSV in 512MB chunks
-  - Parses CSV lines with custom parser
-  - Converts raw strings to typed values (FieldValue enum)
-  - Batches rows (3.5M rows or 1.8GB per batch)
-  - Sends RecordBatch objects through channel
+**Purpose:** Stream and parse CSV data from S3
 
-Thread 2: Parquet Writer (Consumer)
+**Operations:**
 
-Purpose: Write optimized Parquet files
-Operations:
+- Downloads CSV in 512MB chunks
+- Parses CSV lines with custom parser
+- Converts raw strings to typed values (FieldValue enum)
+- Batches rows (3.5M rows or 1.8GB per batch)
+- Sends RecordBatch objects through channel
 
-Receives RecordBatch objects from channel
-Converts to Arrow columnar format
-Writes compressed Parquet with SNAPPY compression
-Uploads final file to S3
+### Thread 2: Parquet Writer (Consumer)
+
+**Purpose:** Write optimized Parquet files
+
+**Operations:**
+
+- Receives RecordBatch objects from channel
+- Converts to Arrow columnar format
+- Writes compressed Parquet with SNAPPY compression
+- Uploads final file to S3
 
 Detailed Threading Diagram
-┌─────────────────────────────────────────────────────────────────┐
-│ Main Thread │
-│ ┌─────────────────┐ ┌───────────────────┐ │
-│ │ Lambda Entry │────────────────────▶│ Parquet Writer │ │
-│ │ Point │ │ (Consumer) │ │
-│ └─────────────────┘ └───────────────────┘ │
-│ │ ▲ │
-│ ▼ │ │
-│ ┌─────────────────┐ ┌─────────────────┐ │ │
-│ │ Spawn Processor │ │ Channel │ │ │
-│ │ Task │ │ (Buffer: 8) │──────┘ │
-│ └─────────────────┘ └─────────────────┘ │
-│ │ ▲ │
-│ ▼ │ │
-│ ┌─────────────────────────────────┴─────────────────────────┐ │
-│ │ Spawned Task Thread │ │
-│ │ ┌─────────────────────────────────────────────────────┐ │ │
-│ │ │ CSV Processor (Producer) │ │ │
-│ │ │ │ │ │
-│ │ │ 1. Stream from S3 (512MB chunks) │ │ │
-│ │ │ 2. Parse CSV lines │ │ │
-│ │ │ 3. Convert to typed FieldValues │ │ │
-│ │ │ 4. Batch rows (3.5M rows/1.8GB) │ │ │
-│ │ │ 5. Create RecordBatch │ │ │
-│ │ │ 6. Send via channel ─────────────────────────────────┘ │
-│ │ └─────────────────────────────────────────────────────┘ │
-│ └─────────────────────────────────────────────────────────────┘
-└─────────────────────────────────────────────────────────────────┘
-Memory Management Strategy
+![Threading diagram](threadDiagram.png)
+
+## Memory Management Strategy
+
 The system is optimized for 2.6GB Lambda memory with careful resource allocation:
-┌─────────────────────────────────────────────────────────────┐
-│ Memory Allocation │
-│ │
-│ CSV Processing Thread: │
-│ ├─ S3 Read Buffer: 512MB │
-│ ├─ Batch Memory: 1.8GB (3.5M rows) │
-│ └─ String Pool: ~50K strings for deduplication │
-│ │
-│ Parquet Writing Thread: │
-│ ├─ Arrow Arrays: Dynamic based on batch │
-│ ├─ Parquet Buffer: 512MB │
-│ └─ Compression Buffer: Dynamic │
-│ │
-│ Channel Buffer: 8 RecordBatch objects │
-│ │
-│ Total: ~2.6GB peak usage │
-└─────────────────────────────────────────────────────────────┘
-Data Flow Pipeline
-┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐
-│ S3 │───▶│ CSV │───▶│ Batch │───▶│ Record │───▶│ Parquet │
-│ File │ │ Parser │ │ Builder │ │ Batch │ │ Writer │
-└─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘
-│ │ │ │ │
-▼ ▼ ▼ ▼ ▼
-Raw CSV String Arrays OptimizedRow Arrow Arrays Compressed
-Data + Type Conv. Collections (Columnar) Binary Data
+
+![Memory Allocation](MemoryAllocation.png)
+
+## Data Flow Pipeline
+
+![DataFlow](DataFlow.png)
