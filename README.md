@@ -137,11 +137,11 @@ This lambda changed multiple times and had a few trade offs in regards to readin
 
 You may be asking how long does this take?
 
-Overall I was getting consistent 4-6 response times deployed in `ap-southeast-2` on all datasets.
+Overall I was getting consistent 4-6 second response times, sometimes more sometimes less. That means from the moment someone asks Buzz a question, most of the time they would have answers to what they asked in 4-6 seconds, no matter the data size. I tried this on 1,000 rows and 10 million rows. Buzz was deployed in `ap-southeast-2` on all datasets. 
 
 But Damien... why does `ap-southeast-2` matter?
 
-I am using bedrock since data will be safe and not used to train models. This means that I will get some extra latency doing a round trip to the states. (No lightspeed for Buzz 🥲)
+I am using bedrock since data will be safe and not used to train models and I want enterprise people to use this, data sensitivity and safety that it will not be stolen is number 1 when it comes to enterprise and LLM use. This means that I will get some extra latency doing a round trip to the states. (No hyperspeed for Buzz 🥲)
 
 I also can init the duckdb instance to be shared across invocations but I honestly have just ran out of time to do anymore as a full time working dad, you can spiral into rabbit holes for the rest of your days about how you can optimize your side projects to shave off 0.1 seconds of latency. We've all been there.
 
@@ -149,7 +149,7 @@ I suspect this would cut off a second or two if it was deployed in the states an
 
 ## How does my natural language get data from a parquet file?
 
-Using Claude and the schema that gets auto inferred at upload of the CSV file on the frontend Buzz generates some SQL for you.
+Using Claude and the schema that gets auto inferred at upload of the CSV file on the frontend Buzz generates some optimised SQL for you.
 
 The full prompt is in `src/backend/common/src/query_prompts.rs` but it has a few rules.
 
@@ -159,9 +159,9 @@ The full prompt is in `src/backend/common/src/query_prompts.rs` but it has a few
 
 Variations in this context are important, when I was doing my testing I found myself trying to type SQL in normal English which just seemed like a massive sticking point from an end user perspective, they might as well go learn SQL. You'd need to know what's exactly in your dataset.
 
-With a little bit of magic Claude and Buzz can figure out that you are looking for and search for items with different variations of what you are looking for. A drink could be called coke, alcohol, water.
+Buzz can figure out what you are looking for and search for items with different variations. If you had a dataset containing data about food and drinks, and you needed to know what drinks were most popular. A drink could be a coke, alcohol, water or anything in between. You would have to explicitly state that you are looking for all of the above. Instead you can just say "I need to know how many drinks were purchased" then Buzz will finish the mission.
 
-To make it human readable I added in a context box to the data where users could get as detailed as they like.
+To make it human readable I added in a context box to the data where users could get as detailed as they like. 
 
 ### How did this lambda evolve over time?
 
