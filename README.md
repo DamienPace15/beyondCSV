@@ -2,10 +2,6 @@
 
 This is my submission for https://awslambdahackathon.devpost.com/
 
-Live demo website: https://d396qtz3n6aw4l.cloudfront.net (please note I haven't touched this in a few months due to life, and I know that bedrock has changed some things so you will most likely get errors D:) 
-
-(I suggest testing on this website as you might run into some problems with deploying in other regions due to bedrock inference across regions, if you are comfortable go ahead and change some stuff 🚀)
-
 ### Inspiration
 
 My name is [Damien Pace](https://www.linkedin.com/in/damienpace1/) and I am a solution architect at Acciona in Melbourne, Australia. I was a backend engineer that mainly worked with Lambda for my first 3.5 years of my career. I love Lambdas so I thought this would be a perfect hackathon for me. My career history explains exactly why my frontend code and UX looks like a career backend dev has done it.
